@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.2.0 -->
+<!-- NUTRILOG_VERSION: 1.4.1 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -145,23 +145,31 @@
     -webkit-backdrop-filter: blur(24px) saturate(140%);
     border-top: 1px solid var(--border);
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    padding: 8px 8px calc(8px + var(--safe-bot));
+    grid-template-columns: repeat(5, 1fr);
+    padding: 8px 4px calc(8px + var(--safe-bot));
+    gap: 2px;
     z-index: 10;
   }
   .tab {
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     gap: 3px;
-    padding: 8px 4px;
+    padding: 7px 2px;
     border-radius: 10px;
     color: var(--text-3);
-    font-size: 10.5px;
+    font-size: 10px;
     font-weight: 500;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
     transition: color var(--dur) var(--ease);
+    min-width: 0;
   }
-  .tab svg { width: 22px; height: 22px; }
+  .tab span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .tab svg { width: 21px; height: 21px; flex-shrink: 0; }
   .tab.active { color: var(--accent); }
   .tab:active { transform: scale(0.94); }
 
@@ -1077,6 +1085,7 @@ const I = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M5 10v10h14V10"/></svg>',
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
   scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 012-2h2M21 7V5a2 2 0 00-2-2h-2M3 17v2a2 2 0 002 2h2M21 17v2a2 2 0 01-2 2h-2"/><path d="M7 7v10M11 7v10M15 7v10M19 7v10"/></svg>',
+  camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>',
   user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M6 6l1 14a2 2 0 002 2h6a2 2 0 002-2l1-14"/></svg>',
@@ -2488,7 +2497,8 @@ function renderAppShell() {
   let tabbar = renderTabbar();
   if (state.tab === 'today')   { header = renderHeader('Diario'); content = renderToday(); }
   if (state.tab === 'search')  { header = renderHeader('Cerca alimenti'); content = renderSearch(); }
-  if (state.tab === 'scan')    { header = renderHeader('Scansiona'); content = renderScan(); }
+  if (state.tab === 'photo')   { header = renderHeader('Foto AI'); content = renderPhotoTab(); }
+  if (state.tab === 'scan')    { header = renderHeader('Scansiona barcode'); content = renderScan(); }
   if (state.tab === 'profile') { header = renderHeader('Profilo'); content = renderProfile(); }
   return `${header}<div class="screen" id="screen">${content}</div>${tabbar}`;
 }
@@ -2503,6 +2513,7 @@ function renderTabbar() {
   return `<div class="tabbar">
     ${tab('today', 'Oggi', I.home)}
     ${tab('search', 'Cerca', I.search)}
+    ${tab('photo', 'Foto', I.camera)}
     ${tab('scan', 'Scan', I.scan)}
     ${tab('profile', 'Profilo', I.user)}
   </div>`;
@@ -2706,7 +2717,91 @@ function updateSearchResults() {
 }
 
 /* ─── SCAN ───────────────────────────────────────────────── */
+/* ─── PHOTO AI TAB ───────────────────────────────────────── */
+function renderPhotoTab() {
+  const aiCfg = getAiConfig();
+  const isConfigured = !!(aiCfg && aiCfg.geminiKey);
+  const m = state.targetMeal || suggestMealByTime();
+  const mealLabels = { breakfast: 'Colazione', lunch: 'Pranzo', dinner: 'Cena', snack: 'Spuntino' };
+
+  return `<div style="padding:20px var(--pad-lg) 24px">
+    <div class="card" style="padding:22px 18px;text-align:center;margin-bottom:14px">
+      <div style="width:64px;height:64px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </div>
+      <h2 style="font-size:20px;font-weight:700;margin:0 0 4px">Riconoscimento AI</h2>
+      <p style="font-size:13.5px;color:var(--text-2);margin:0 0 18px;line-height:1.5">Fotografa un piatto o l'etichetta di un prodotto.<br>L'AI estrae automaticamente i valori nutrizionali.</p>
+    </div>
+
+    <h3 class="section-title" style="margin-top:8px">Pasto di destinazione</h3>
+    <div class="meal-pick" id="ph-meal-pick" style="margin:0 var(--pad-lg) 14px">
+      ${[['breakfast','Colazione'],['lunch','Pranzo'],['dinner','Cena'],['snack','Spuntino']]
+        .map(([k, l]) => `<button type="button" data-meal-pick="${k}" class="${k === m ? 'sel' : ''}">${l}</button>`).join('')}
+    </div>
+
+    <div style="padding:0 var(--pad-lg)">
+      <button class="btn btn-primary" id="ph-camera" style="margin-bottom:8px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span>Scatta foto</span>
+      </button>
+      <button class="btn btn-secondary" id="ph-gallery">
+        ${I.box}<span>Scegli dalla galleria</span>
+      </button>
+
+      <input type="file" id="ph-input-cam" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="ph-input-gal" accept="image/*" style="display:none">
+    </div>
+
+    ${!isConfigured ? `
+    <div style="margin:16px var(--pad-lg) 0;background:rgba(255,176,32,0.08);border:1px solid rgba(255,176,32,0.2);border-radius:10px;padding:14px;font-size:12.5px;line-height:1.5">
+      <div style="font-weight:600;color:var(--warning);margin-bottom:4px">AI non configurato</div>
+      <div style="color:var(--text-2);margin-bottom:10px">Serve una API key gratuita di Google Gemini (1.500 richieste/giorno).</div>
+      <button class="btn btn-secondary" id="ph-setup" style="font-size:12.5px;padding:8px 12px">Configura ora</button>
+    </div>
+    ` : `
+    <div style="margin:16px var(--pad-lg) 0;background:var(--surface-2);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--text-2);line-height:1.5">
+      <div style="font-weight:600;color:var(--text-3);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px">Funziona meglio con</div>
+      <ul style="margin:0;padding-left:18px">
+        <li>Solo il piatto/prodotto in inquadratura</li>
+        <li>Etichetta nutrizionale leggibile</li>
+        <li>Foto da vicino, ben illuminata</li>
+      </ul>
+    </div>
+    `}
+  </div>`;
+}
+
+/* ─── SCAN (legacy, kept for compat) ─────────────────────── */
 function renderScan() {
+  if (state.scanState === 'starting') {
+    return `<div style="padding:32px var(--pad-lg);text-align:center">
+      <div class="spinner"></div>
+      <div style="font-size:13px;color:var(--text-2);margin-top:14px">Avvio scanner...</div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:4px">Caricamento libreria di riconoscimento (~150KB la prima volta)</div>
+    </div>`;
+  }
+  if (state.scanState === 'lookup') {
+    return `<div style="padding:32px var(--pad-lg);text-align:center">
+      <div class="spinner"></div>
+      <div style="font-size:14px;font-weight:600;margin-top:14px">Codice rilevato!</div>
+      <div style="font-family:ui-monospace,monospace;font-size:13px;color:var(--text-2);margin-top:6px">${esc(state.scanCode || '')}</div>
+      <div style="font-size:12px;color:var(--text-3);margin-top:10px">Cerco il prodotto su Open Food Facts...</div>
+    </div>`;
+  }
+  if (state.scanState === 'notfound') {
+    return `<div style="padding:0 var(--pad-lg)">
+      <div class="card-flat" style="text-align:center;margin-bottom:14px">
+        <div style="width:48px;height:48px;border-radius:50%;background:rgba(255,176,32,0.15);color:var(--warning);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px">Prodotto non trovato</div>
+        <div style="font-family:ui-monospace,monospace;font-size:12px;color:var(--text-2);margin-bottom:6px">${esc(state.scanCode || '')}</div>
+        <div style="font-size:12px;color:var(--text-3);line-height:1.5">Il codice è stato letto correttamente ma non è nel database Open Food Facts.</div>
+      </div>
+      <button class="btn btn-primary" id="rescan">Scansiona un altro prodotto</button>
+      <button class="btn btn-secondary" id="rescan-quick" style="margin-top:8px">${I.bolt}<span>Aggiungi manualmente i valori</span></button>
+    </div>`;
+  }
   if (state.scanState === 'denied') {
     return `<div style="padding:0 var(--pad-lg)">
       <div class="card-flat" style="margin-bottom:16px">
@@ -2741,7 +2836,7 @@ function renderScan() {
       <div style="padding:0 var(--pad-lg)">
         <div class="card-flat" style="text-align:center;margin-bottom:16px">
           <div style="color:var(--text-2);font-size:13px;margin-bottom:12px">Fotocamera non disponibile</div>
-          <div style="font-size:12px;color:var(--text-3);line-height:1.5">Inserisci manualmente il codice a barre del prodotto.</div>
+          <div style="font-size:12px;color:var(--text-3);line-height:1.5">${esc(state.scanError || 'Inserisci manualmente il codice a barre del prodotto.')}</div>
         </div>
         <form id="manual-form">
           <div class="field">
@@ -2759,6 +2854,7 @@ function renderScan() {
         <div style="color:var(--danger);font-size:14px;margin-bottom:8px">Errore scanner</div>
         <div style="font-size:13px;color:var(--text-2);margin-bottom:16px">${esc(state.scanError || 'Impossibile avviare la fotocamera')}</div>
         <button class="btn btn-primary" id="to-manual">Inserisci codice manualmente</button>
+        <button class="btn btn-secondary" id="retry-cam" style="margin-top:8px">Riprova</button>
       </div>
     </div>`;
   }
@@ -2776,29 +2872,90 @@ function renderScan() {
   `;
 }
 
+/* ─── ZXING SCANNER ───────────────────────────────────────
+   Carica @zxing/browser dinamicamente da CDN (jsDelivr).
+   ~150 KB scaricati al primo uso, poi cached dal browser.
+   Funziona su Safari iOS dove BarcodeDetector è rotto/assente.
+   ──────────────────────────────────────────────────────── */
+const ZXING_CDN = 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm';
+let _zxingPromise = null;
+async function loadZxing() {
+  if (window._zxing) return window._zxing;
+  if (!_zxingPromise) {
+    _zxingPromise = (async () => {
+      try {
+        const mod = await import(ZXING_CDN);
+        // mod expose BrowserMultiFormatReader e enums utili
+        window._zxing = mod;
+        dlog('ZXing loaded');
+        return mod;
+      } catch (e) {
+        _zxingPromise = null;
+        throw new Error('Caricamento scanner fallito: ' + e.message);
+      }
+    })();
+  }
+  return _zxingPromise;
+}
+
 async function startScanner() {
-  if (!('BarcodeDetector' in window)) {
+  if (state.scanState === 'running' || state.scanState === 'starting') return;
+  state.scanState = 'starting';
+  state.scanError = '';
+  render();
+
+  let zxing;
+  try {
+    zxing = await loadZxing();
+  } catch (e) {
+    state.scanError = e.message || 'Impossibile caricare lo scanner';
     state.scanState = 'manual';
     render();
     return;
   }
-  if (state.scanState === 'running' || state.scanState === 'starting') return;
-  state.scanState = 'starting';
+
+  // Costruisci il reader con i formati barcode usati nel retail (EAN/UPC, code128, ecc)
+  const hints = new Map();
+  // BarcodeFormat enum keys: usiamo direct via mod.BarcodeFormat
+  const F = zxing.BarcodeFormat;
+  if (F) {
+    const formats = [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.QR_CODE].filter(x => x !== undefined);
+    if (formats.length && zxing.DecodeHintType) {
+      hints.set(zxing.DecodeHintType.POSSIBLE_FORMATS, formats);
+      hints.set(zxing.DecodeHintType.TRY_HARDER, true);
+    }
+  }
+  const reader = new zxing.BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 200 });
+  state.zxingReader = reader;
+
+  const video = document.getElementById('scan-video');
+  if (!video) { stopScanner(); return; }
+
   try {
-    const formats = await BarcodeDetector.getSupportedFormats();
-    const useFormats = formats.length ? ['ean_13','ean_8','upc_a','upc_e','code_128','code_39'].filter(f => formats.includes(f)) : undefined;
-    state.detector = new BarcodeDetector(useFormats && useFormats.length ? { formats: useFormats } : undefined);
-    state.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    const video = document.getElementById('scan-video');
-    if (!video) { stopScanner(); return; }
-    video.srcObject = state.stream;
-    await video.play();
+    // decodeFromVideoDevice apre la camera, attiva il loop interno e
+    // chiama il callback con ogni risultato/errore
+    state.zxingControls = await reader.decodeFromVideoDevice(
+      undefined, // deviceId: undefined → seleziona automaticamente la camera back
+      video,
+      (result, err, controls) => {
+        if (result) {
+          const code = result.getText();
+          dlog('ZXing decoded: ' + code);
+          stopScanner();
+          handleBarcodeResult(code);
+        }
+        // err = NotFoundException ad ogni frame senza match → ignora
+      }
+    );
     state.scanState = 'running';
-    scanTick();
+    render();
   } catch (err) {
     if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
       state.scanError = 'Permesso fotocamera negato';
       state.scanState = 'denied';
+    } else if (err && err.name === 'NotFoundError') {
+      state.scanError = 'Nessuna fotocamera trovata';
+      state.scanState = 'manual';
     } else {
       state.scanError = err && err.message ? err.message : 'Errore fotocamera';
       state.scanState = 'manual';
@@ -2807,53 +2964,49 @@ async function startScanner() {
   }
 }
 
-async function scanTick() {
-  if (state.scanState !== 'running') return;
-  const video = document.getElementById('scan-video');
-  if (!video || video.readyState < 2) {
-    state.scanLoop = requestAnimationFrame(scanTick);
-    return;
-  }
-  try {
-    const codes = await state.detector.detect(video);
-    if (codes && codes.length) {
-      const code = codes[0].rawValue;
-      if (code && code !== state.currentBarcode) {
-        state.currentBarcode = code;
-        await handleBarcode(code);
-        setTimeout(() => { state.currentBarcode = null; }, 3000);
-      }
-    }
-  } catch (_) { /* ignore per-frame errors */ }
-  state.scanLoop = requestAnimationFrame(scanTick);
-}
-
 function stopScanner() {
-  if (state.scanLoop) cancelAnimationFrame(state.scanLoop);
-  state.scanLoop = null;
-  if (state.stream) {
-    state.stream.getTracks().forEach(t => { try { t.stop(); } catch (_) {} });
-    state.stream = null;
+  try {
+    if (state.zxingControls && typeof state.zxingControls.stop === 'function') {
+      state.zxingControls.stop();
+    }
+  } catch (_) {}
+  try {
+    if (state.zxingReader && typeof state.zxingReader.reset === 'function') {
+      state.zxingReader.reset();
+    }
+  } catch (_) {}
+  state.zxingControls = null;
+  state.zxingReader = null;
+  if (state.scanState !== 'denied' && state.scanState !== 'manual' && state.scanState !== 'error') {
+    state.scanState = 'idle';
   }
-  state.detector = null;
-  state.currentBarcode = null;
-  if (state.scanState === 'running' || state.scanState === 'starting') state.scanState = 'idle';
 }
 
-async function handleBarcode(code) {
-  toast('Codice letto: ' + code);
+async function handleBarcodeResult(code) {
+  state.scanState = 'lookup';
+  state.scanError = '';
+  state.scanCode = code;
+  render();
   try {
-    const food = await lookupBarcode(code);
-    if (!food) {
-      toast('Prodotto non trovato');
+    const product = await lookupBarcode(code);
+    if (!product) {
+      state.scanState = 'notfound';
+      render();
       return;
     }
-    stopScanner();
-    openAddFood(food, state.targetMeal);
-  } catch (_) {
-    toast('Errore nel recupero prodotto');
+    state.scanState = 'idle';
+    render();
+    // Apri il sheet di add (riusa quello esistente)
+    openAddFood(product, state.targetMeal || suggestMealByTime());
+  } catch (e) {
+    dlog('OFF lookup FAIL: ' + e.message);
+    state.scanState = 'error';
+    state.scanError = 'Lookup fallito: ' + e.message;
+    render();
   }
 }
+
+async function handleBarcodeResult_unused() { /* placeholder rimosso */ }
 
 /* ─── PROFILE ───────────────────────────────────────────── */
 function renderProfile() {
@@ -3766,7 +3919,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.4.1';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -4487,11 +4640,16 @@ async function openDebugSheet() {
 /* ─── FAB QUICK ADD MENU ──────────────────────────────── */
 function suggestMealByTime() {
   const h = new Date().getHours();
-  if (h >= 5 && h < 11) return 'breakfast';
-  if (h >= 11 && h < 15) return 'lunch';
+  // Logica pratica per pasti italiani:
+  //   05-10  → Colazione
+  //   10-15  → Pranzo  (include la fascia "sto per pranzare" delle 11-12)
+  //   15-18  → Spuntino (merenda pomeridiana)
+  //   18-23  → Cena
+  //   23-05  → Cena (rientri tardi, ultimo pasto)
+  if (h >= 5 && h < 10) return 'breakfast';
+  if (h >= 10 && h < 15) return 'lunch';
   if (h >= 15 && h < 18) return 'snack';
-  if (h >= 18 && h < 23) return 'dinner';
-  return 'snack';
+  return 'dinner'; // 18-23 e 23-05
 }
 function openFabMenu() {
   const portal = document.getElementById('portal');
@@ -4502,8 +4660,8 @@ function openFabMenu() {
     <div class="fab-menu" id="fab-menu">
       <button class="fab-menu-item" data-fab="quick"><span>Rapido · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.bolt}</span></button>
       <button class="fab-menu-item" data-fab="photo"><span>Foto AI · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.scan}</span></button>
-      <button class="fab-menu-item" data-fab="search"><span>Cerca · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.search}</span></button>
       <button class="fab-menu-item" data-fab="barcode"><span>Barcode · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.scan}</span></button>
+      <button class="fab-menu-item" data-fab="search"><span>Cerca · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.search}</span></button>
       <button class="fab-menu-item" data-fab="my"><span>I miei · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.box}</span></button>
     </div>
   `;
@@ -4884,8 +5042,13 @@ Regole:
 - confidence: "high" per etichette leggibili, "medium" per piatti riconoscibili, "low" per casi incerti.`;
 
 async function callGeminiVision(apiKey, imgBase64, mediaType) {
-  // Modello free tier: gemini-1.5-flash-latest
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`;
+  // Lista di modelli da provare in ordine. Free tier al 2026.
+  // Se il primo fallisce con 404 (modello non disponibile), prova il successivo.
+  const MODELS = [
+    'gemini-2.5-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-flash-latest',
+  ];
   const body = {
     contents: [{
       role: 'user',
@@ -4900,26 +5063,48 @@ async function callGeminiVision(apiKey, imgBase64, mediaType) {
       max_output_tokens: 1024,
     },
   };
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
+
+  let lastErr = null;
+  for (const model of MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      lastErr = new Error('Rete: ' + (e.message || 'fetch failed'));
+      continue;
+    }
+    if (res.ok) {
+      const data = await res.json();
+      dlog('Gemini OK with model: ' + model);
+      const text = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts || [])
+        .map(p => p.text || '').join('').trim();
+      if (!text) throw new Error('Risposta vuota da Gemini');
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('JSON non trovato nella risposta');
+      return JSON.parse(match[0]);
+    }
+    // Errore non-ok: estrai dettaglio
     let detail = '';
     try { const j = await res.json(); detail = (j.error && j.error.message) || ''; } catch (_) {}
+    dlog(`Gemini ${model} HTTP ${res.status}: ${detail.slice(0,100)}`);
+    // Casi che NON sono "modello non disponibile" → errore secco, no fallback
     if (res.status === 400 && /API key/i.test(detail)) throw new Error('API key non valida');
     if (res.status === 403) throw new Error('API key non autorizzata o quota esaurita');
     if (res.status === 429) throw new Error('Troppe richieste, attendi qualche secondo');
+    // 404 = modello non disponibile, prova il prossimo
+    if (res.status === 404) {
+      lastErr = new Error(`Modello ${model} non disponibile`);
+      continue;
+    }
+    // Altri errori → fail
     throw new Error(`Gemini HTTP ${res.status}${detail ? ': ' + detail : ''}`);
   }
-  const data = await res.json();
-  const text = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts || [])
-    .map(p => p.text || '').join('').trim();
-  if (!text) throw new Error('Risposta vuota da Gemini');
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('JSON non trovato nella risposta');
-  return JSON.parse(match[0]);
+  throw lastErr || new Error('Nessun modello Gemini disponibile');
 }
 
 async function analyzeFoodPhoto(file, meal) {
@@ -5173,10 +5358,14 @@ function bindApp() {
     t.onclick = async () => {
       const next = t.dataset.tab;
       if (state.tab === 'scan' && next !== 'scan') stopScanner();
-      // Se l'utente va direttamente su Cerca/Scan dalla tab bar senza specificare
-      // un pasto, defaulta a colazione (che l'utente può cambiare nel foglio quantità)
-      if ((next === 'search' || next === 'scan') && state.tab !== next) {
+      // Se l'utente entra dalla tab bar senza pasto specificato:
+      // - search: default colazione (può cambiarlo dal foglio quantità)
+      // - photo/scan: pasto suggerito dall'orario corrente
+      if (next === 'search' && state.tab !== next) {
         state.targetMeal = 'breakfast';
+      }
+      if ((next === 'photo' || next === 'scan') && state.tab !== next) {
+        state.targetMeal = suggestMealByTime();
       }
       state.tab = next;
       render();
@@ -5185,6 +5374,35 @@ function bindApp() {
   });
   // start scanner when landing on tab
   if (state.tab === 'scan' && state.scanState === 'idle') startScanner();
+
+  // photo tab actions
+  const phMealPick = document.getElementById('ph-meal-pick');
+  if (phMealPick) {
+    phMealPick.querySelectorAll('[data-meal-pick]').forEach(b => {
+      b.onclick = () => {
+        state.targetMeal = b.dataset.mealPick;
+        phMealPick.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x.dataset.mealPick === state.targetMeal));
+      };
+    });
+  }
+  const phCam = document.getElementById('ph-camera');
+  const phGal = document.getElementById('ph-gallery');
+  const phInputCam = document.getElementById('ph-input-cam');
+  const phInputGal = document.getElementById('ph-input-gal');
+  const phSetup = document.getElementById('ph-setup');
+  if (phCam) phCam.onclick = () => phInputCam.click();
+  if (phGal) phGal.onclick = () => phInputGal.click();
+  if (phSetup) phSetup.onclick = () => openAiSetupSheet();
+  const onPhotoPick = (input) => {
+    if (!input) return;
+    input.onchange = async () => {
+      const f = input.files && input.files[0];
+      if (!f) return;
+      await analyzeFoodPhoto(f, state.targetMeal || suggestMealByTime());
+    };
+  };
+  onPhotoPick(phInputCam);
+  onPhotoPick(phInputGal);
 
   // date nav
   document.querySelectorAll('[data-date]').forEach(b => {
@@ -5262,6 +5480,16 @@ function bindApp() {
   if (retryCam) retryCam.onclick = () => { state.scanState = 'idle'; render(); startScanner(); };
   const retryPerm = document.getElementById('retry-perm');
   if (retryPerm) retryPerm.onclick = () => { state.scanState = 'idle'; state.scanError = ''; render(); startScanner(); };
+  const rescanBtn = document.getElementById('rescan');
+  if (rescanBtn) rescanBtn.onclick = () => { state.scanState = 'idle'; state.scanCode = ''; render(); startScanner(); };
+  const rescanQuick = document.getElementById('rescan-quick');
+  if (rescanQuick) rescanQuick.onclick = () => {
+    const code = state.scanCode;
+    state.scanState = 'idle';
+    state.scanCode = '';
+    openQuickAddSheet(state.targetMeal || suggestMealByTime());
+    if (code) toast('Codice: ' + code + ' (manuale)');
+  };
   const manualForm = document.getElementById('manual-form');
   if (manualForm) {
     manualForm.onsubmit = async (e) => {
