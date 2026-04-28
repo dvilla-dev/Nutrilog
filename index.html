@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.6.0 -->
+<!-- NUTRILOG_VERSION: 1.7.0 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -1103,6 +1103,7 @@ const I = {
   stack: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5M3 18l9 5 9-5"/></svg>',
   logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h4a2 2 0 012 2v12a2 2 0 01-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>',
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>',
   box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v10"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
   copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>',
@@ -1367,7 +1368,7 @@ async function getStorageUsage() {
     }
   } else {
     // window.storage: list all prefixes and sum
-    const prefixes = ['users:', 'diary:', 'customFoods:', 'mealTemplates:', 'goals:', 'session'];
+    const prefixes = ['users:', 'diary:', 'customFoods:', 'mealTemplates:', 'goals:', 'dbOverrides:', 'dbAdditions:', 'session'];
     for (const pref of prefixes) {
       const keys = await sl(pref);
       for (const k of keys) {
@@ -1443,6 +1444,8 @@ async function exportUserData() {
     diary: {},
     customFoods: [],
     mealTemplates: [],
+    dbOverrides: {},
+    dbAdditions: [],
   };
   const diaryKeys = await sl(`diary:${userId}:`);
   for (const k of diaryKeys) {
@@ -1458,6 +1461,19 @@ async function exportUserData() {
   for (const k of tKeys) {
     const t = await sg(k);
     if (t) out.mealTemplates.push(t);
+  }
+  // DB overrides (modifiche a alimenti CREA-INRAN)
+  const ovKeys = await sl(`dbOverrides:${userId}:`);
+  for (const k of ovKeys) {
+    const o = await sg(k);
+    const idx = k.split(':').pop();
+    if (o) out.dbOverrides[idx] = o;
+  }
+  // DB additions (alimenti aggiunti dall'utente al DB)
+  const addKeys = await sl(`dbAdditions:${userId}:`);
+  for (const k of addKeys) {
+    const a = await sg(k);
+    if (a) out.dbAdditions.push({ ...a, _id: k.split(':').pop() });
   }
   return out;
 }
@@ -1505,6 +1521,26 @@ async function importUserData(payload, { mode = 'merge' } = {}) {
       const id = t.id || 'tpl-' + uid();
       await ss(`mealTemplates:${userId}:${id}`, { ...t, id, updatedAt: Date.now() });
       imported.mealTemplates++;
+    }
+  }
+  // DB overrides
+  if (payload.dbOverrides && typeof payload.dbOverrides === 'object') {
+    imported.dbOverrides = 0;
+    for (const [idx, o] of Object.entries(payload.dbOverrides)) {
+      if (!/^\d+$/.test(idx)) continue;
+      await ss(`dbOverrides:${userId}:${idx}`, o);
+      imported.dbOverrides++;
+    }
+  }
+  // DB additions
+  if (Array.isArray(payload.dbAdditions)) {
+    imported.dbAdditions = 0;
+    for (const a of payload.dbAdditions) {
+      if (!a.name) continue;
+      const id = a._id || 'dba-' + uid();
+      const { _id, ...clean } = a;
+      await ss(`dbAdditions:${userId}:${id}`, clean);
+      imported.dbAdditions++;
     }
   }
   return imported;
@@ -2282,13 +2318,64 @@ const LOCAL_FOODS = [
 function stripAccents(s) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
+
+/**
+ * Restituisce la lista completa degli alimenti del DB:
+ * - Per ogni LOCAL_FOODS[i]: applica override se esiste in storage `dbOverrides:<userId>:<i>`
+ * - Aggiunge gli alimenti aggiunti dall'utente da `dbAdditions:<userId>:<id>`
+ * Restituisce array con shape: { ...food, _kind: 'builtin'|'added', _index?: number, _addId?: string, _modified?: boolean }
+ */
+async function getLocalFoods() {
+  if (!state.user || !state.user.userId) {
+    return LOCAL_FOODS.map((f, i) => ({ ...f, _kind: 'builtin', _index: i, _modified: false }));
+  }
+  const userId = state.user.userId;
+  // Override: chiave per ogni alimento builtin modificato
+  const ovKeys = await sl(`dbOverrides:${userId}:`);
+  const overrides = {};
+  for (const k of ovKeys) {
+    const idx = parseInt(k.split(':').pop(), 10);
+    if (!isNaN(idx)) {
+      const o = await sg(k);
+      if (o) overrides[idx] = o;
+    }
+  }
+  // Builtin con override applicati
+  const result = LOCAL_FOODS.map((f, i) => {
+    const o = overrides[i];
+    if (o) {
+      return { ...f, ...o, _kind: 'builtin', _index: i, _modified: true };
+    }
+    return { ...f, _kind: 'builtin', _index: i, _modified: false };
+  });
+  // Additions: alimenti completamente nuovi aggiunti dall'utente
+  const addKeys = await sl(`dbAdditions:${userId}:`);
+  for (const k of addKeys) {
+    const a = await sg(k);
+    if (a) {
+      result.push({ ...a, _kind: 'added', _addId: k.split(':').pop() });
+    }
+  }
+  return result;
+}
+
+/* Versione sincrona usata in hot path (search): legge cache già caricata in state.dbFoods */
+function getLocalFoodsSync() {
+  return state.dbFoods || LOCAL_FOODS.map((f, i) => ({ ...f, _kind: 'builtin', _index: i, _modified: false }));
+}
+
+async function refreshDbFoodsCache() {
+  state.dbFoods = await getLocalFoods();
+}
+
 function searchLocal(q) {
   const qLow = stripAccents(q.trim().toLowerCase());
   if (!qLow) return [];
   const tokens = qLow.split(/\s+/).filter(Boolean);
+  const list = getLocalFoodsSync();
   const scored = [];
-  for (let i = 0; i < LOCAL_FOODS.length; i++) {
-    const f = LOCAL_FOODS[i];
+  for (let i = 0; i < list.length; i++) {
+    const f = list[i];
     const hay = stripAccents((f.name + ' ' + (f.brand || '')).toLowerCase());
     let match = true;
     let score = 0;
@@ -2298,8 +2385,9 @@ function searchLocal(q) {
       score += (idx === 0 ? 10 : 1) + (hay.startsWith(t) ? 5 : 0);
     }
     if (match) {
+      const id = f._kind === 'added' ? 'add-' + f._addId : 'loc-' + f._index;
       scored.push({
-        food: { ...f, id: 'loc-' + i, code: '', image_url: '' },
+        food: { ...f, id, code: '', image_url: '' },
         score
       });
     }
@@ -2442,6 +2530,7 @@ async function loadAll() {
     loadGoals(),
     loadCustomFoods(),
     loadTemplates(),
+    refreshDbFoodsCache(),
   ]);
 }
 
@@ -3241,6 +3330,22 @@ function renderProfile() {
         </div>
         <div class="chev">${I.right}</div>
       </div>
+      <div class="list-item" data-go="dbFoods">
+        <div class="list-item-icon">${I.search}</div>
+        <div class="list-item-main">
+          <div class="list-item-title">Database alimenti</div>
+          <div class="list-item-sub">${(state.dbFoods || LOCAL_FOODS).length} alimenti${(() => {
+            const list = state.dbFoods || [];
+            const mod = list.filter(f => f._modified).length;
+            const add = list.filter(f => f._kind === 'added').length;
+            const parts = [];
+            if (mod > 0) parts.push(`${mod} modificat${mod === 1 ? 'o' : 'i'}`);
+            if (add > 0) parts.push(`${add} aggiunt${add === 1 ? 'o' : 'i'}`);
+            return parts.length ? ' · ' + parts.join(', ') : '';
+          })()}</div>
+        </div>
+        <div class="chev">${I.right}</div>
+      </div>
     </div>
 
     <h3 class="section-title">Dati</h3>
@@ -3839,6 +3944,162 @@ function openCustomFoodsSheet() {
     };
   });
 }
+/* ─── DATABASE ALIMENTI ───────────────────────────────────
+   Permette di visualizzare, modificare e aggiungere alimenti
+   al DB CREA-INRAN. Le modifiche sono salvate come override
+   in storage e propagate al cloud via auto-sync.
+   ──────────────────────────────────────────────────────── */
+async function openDbFoodsSheet(filter = '') {
+  // Refresh cache per essere certi di avere lo stato più recente
+  await refreshDbFoodsCache();
+  const list = state.dbFoods || [];
+  const fLow = stripAccents(filter.trim().toLowerCase());
+  const filtered = !fLow ? list : list.filter(f => {
+    const hay = stripAccents((f.name + ' ' + (f.brand || '')).toLowerCase());
+    return fLow.split(/\s+/).every(t => hay.includes(t));
+  });
+  const totalMod = list.filter(f => f._modified).length;
+  const totalAdd = list.filter(f => f._kind === 'added').length;
+  const html = `
+    <h2 class="sheet-title">Database alimenti</h2>
+    <p class="sheet-sub">${list.length} alimenti${totalMod || totalAdd ? ` · ${totalMod} modificat${totalMod === 1 ? 'o' : 'i'}, ${totalAdd} aggiunt${totalAdd === 1 ? 'o' : 'i'}` : ' · valori CREA-INRAN ufficiali'}</p>
+
+    <button class="btn btn-primary" id="db-new" style="margin-bottom:10px">${I.plus}<span>Nuovo alimento</span></button>
+
+    <div class="field" style="margin-bottom:10px">
+      <input class="input" id="db-search" placeholder="Cerca nel database..." value="${esc(filter)}" autocomplete="off">
+    </div>
+
+    <div id="db-list" style="max-height:60vh;overflow-y:auto">
+      ${filtered.length === 0 ? `<div class="subtle-list-empty">${fLow ? 'Nessun risultato' : 'Database vuoto'}</div>` : filtered.slice(0, 100).map(f => {
+        const idAttr = f._kind === 'added' ? `add-${f._addId}` : `idx-${f._index}`;
+        const modBadge = f._modified ? `<span style="display:inline-block;background:var(--accent-dim);color:var(--accent);font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;letter-spacing:0.05em;text-transform:uppercase">MOD</span>` : '';
+        const addBadge = f._kind === 'added' ? `<span style="display:inline-block;background:rgba(85,200,255,0.15);color:#5cf;font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;letter-spacing:0.05em;text-transform:uppercase">NUOVO</span>` : '';
+        return `
+        <div style="display:flex;align-items:center;gap:12px;padding:11px 6px;border-bottom:1px solid var(--border)" data-db-row="${idAttr}">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}${modBadge}${addBadge}</div>
+            <div style="font-size:12px;color:var(--text-2);margin-top:2px">${esc(f.brand || 'CREA-INRAN')} · ${round(f.kcal)} kcal · P${round(f.protein)} C${round(f.carbs)} G${round(f.fat)}</div>
+          </div>
+          <button class="icon-btn" data-edit-db="${idAttr}" aria-label="Modifica">${I.edit}</button>
+        </div>`;
+      }).join('') + (filtered.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${filtered.length - 100} altri risultati. Affina la ricerca.</div>` : '')}
+    </div>
+  `;
+  openSheet(html);
+  const searchInput = document.getElementById('db-search');
+  if (searchInput) {
+    let t;
+    searchInput.oninput = () => {
+      clearTimeout(t);
+      t = setTimeout(() => openDbFoodsSheet(searchInput.value), 220);
+    };
+  }
+  document.getElementById('db-new').onclick = () => openDbFoodEditor(null);
+  document.querySelectorAll('[data-edit-db]').forEach(b => {
+    b.onclick = () => {
+      const ref = b.dataset.editDb;
+      if (ref.startsWith('add-')) {
+        const addId = ref.slice(4);
+        const food = list.find(f => f._kind === 'added' && f._addId === addId);
+        if (food) openDbFoodEditor(food);
+      } else if (ref.startsWith('idx-')) {
+        const idx = parseInt(ref.slice(4), 10);
+        const food = list.find(f => f._kind === 'builtin' && f._index === idx);
+        if (food) openDbFoodEditor(food);
+      }
+    };
+  });
+}
+
+function openDbFoodEditor(food) {
+  // food può essere null (nuovo), oppure un elemento da getLocalFoods()
+  const isNew = !food;
+  const isBuiltin = food && food._kind === 'builtin';
+  const isAdded = food && food._kind === 'added';
+  const f = food || { name: '', brand: '', kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 };
+  const titleText = isNew ? 'Nuovo alimento DB' : (isBuiltin ? 'Modifica alimento DB' : 'Modifica alimento aggiunto');
+  const subText = isBuiltin
+    ? (food._modified ? 'Modifica già attiva. Puoi continuare a editare o ripristinare i valori CREA-INRAN.' : 'Stai per modificare un alimento CREA-INRAN. I tuoi valori sostituiranno quelli ufficiali.')
+    : (isAdded ? 'Alimento aggiunto da te. Puoi modificarlo o eliminarlo.' : 'Aggiungi un nuovo alimento al database. Sarà ricercabile dalla schermata Cerca.');
+
+  const html = `
+    <h2 class="sheet-title">${titleText}</h2>
+    <p class="sheet-sub">${esc(subText)}</p>
+    <form id="db-food-form">
+      <div class="field"><label>Nome *</label><input class="input" name="name" value="${esc(f.name)}" required autocomplete="off"></div>
+      <div class="field"><label>Marca / categoria (opzionale)</label><input class="input" name="brand" value="${esc(f.brand || '')}" autocomplete="off"></div>
+
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+        <div class="field"><label>Kcal / 100g</label><input class="input" name="kcal" type="number" inputmode="decimal" step="0.1" min="0" value="${f.kcal}"></div>
+        <div class="field"><label>Proteine (g)</label><input class="input" name="protein" type="number" inputmode="decimal" step="0.1" min="0" value="${f.protein}"></div>
+        <div class="field"><label>Carboidrati (g)</label><input class="input" name="carbs" type="number" inputmode="decimal" step="0.1" min="0" value="${f.carbs}"></div>
+        <div class="field"><label>Grassi (g)</label><input class="input" name="fat" type="number" inputmode="decimal" step="0.1" min="0" value="${f.fat}"></div>
+        <div class="field"><label>Fibre (g)</label><input class="input" name="fiber" type="number" inputmode="decimal" step="0.1" min="0" value="${f.fiber}"></div>
+        <div class="field"><label>Zuccheri (g)</label><input class="input" name="sugar" type="number" inputmode="decimal" step="0.1" min="0" value="${f.sugar}"></div>
+      </div>
+      <div class="field"><label>Sodio (mg / 100g)</label><input class="input" name="sodium" type="number" inputmode="decimal" step="1" min="0" value="${f.sodium}"></div>
+
+      <button class="btn btn-primary" type="submit" style="margin-top:6px">Salva</button>
+      ${isBuiltin && food._modified ? `<button type="button" class="btn btn-secondary" id="db-reset" style="margin-top:8px">${I.refresh || ''}<span>Ripristina valori CREA-INRAN</span></button>` : ''}
+      ${isAdded ? `<button type="button" class="btn btn-secondary" id="db-delete" style="margin-top:8px;color:var(--danger)">${I.trash}<span>Elimina alimento</span></button>` : ''}
+      <button type="button" class="btn btn-ghost" id="db-cancel" style="margin-top:8px">Annulla</button>
+    </form>
+  `;
+  openSheet(html);
+  document.getElementById('db-cancel').onclick = () => openDbFoodsSheet();
+  document.getElementById('db-food-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const userId = state.user.userId;
+    const data = {
+      name: String(fd.get('name') || '').trim(),
+      brand: String(fd.get('brand') || '').trim(),
+      kcal: parseFloat(fd.get('kcal')) || 0,
+      protein: parseFloat(fd.get('protein')) || 0,
+      carbs: parseFloat(fd.get('carbs')) || 0,
+      fat: parseFloat(fd.get('fat')) || 0,
+      fiber: parseFloat(fd.get('fiber')) || 0,
+      sugar: parseFloat(fd.get('sugar')) || 0,
+      sodium: parseFloat(fd.get('sodium')) || 0,
+    };
+    if (!data.name) { toast('Inserisci un nome'); return; }
+    if (isBuiltin) {
+      // Salva come override per indice
+      await ss(`dbOverrides:${userId}:${food._index}`, data);
+    } else if (isAdded) {
+      // Aggiorna l'addition esistente
+      await ss(`dbAdditions:${userId}:${food._addId}`, data);
+    } else {
+      // Nuovo alimento
+      const id = 'dba-' + uid();
+      await ss(`dbAdditions:${userId}:${id}`, data);
+    }
+    await refreshDbFoodsCache();
+    if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
+    toast('Salvato');
+    openDbFoodsSheet();
+  };
+  const resetBtn = document.getElementById('db-reset');
+  if (resetBtn) resetBtn.onclick = async () => {
+    if (!confirm('Ripristinare i valori CREA-INRAN ufficiali per "' + f.name + '"?')) return;
+    await sd(`dbOverrides:${state.user.userId}:${food._index}`);
+    await refreshDbFoodsCache();
+    if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
+    toast('Ripristinato');
+    openDbFoodsSheet();
+  };
+  const deleteBtn = document.getElementById('db-delete');
+  if (deleteBtn) deleteBtn.onclick = async () => {
+    if (!confirm('Eliminare "' + f.name + '" dal database?')) return;
+    await sd(`dbAdditions:${state.user.userId}:${food._addId}`);
+    await refreshDbFoodsCache();
+    if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
+    toast('Eliminato');
+    openDbFoodsSheet();
+  };
+}
+
 function openCustomFoodEditor(food) {
   state.editFood = food;
   const f = food || { name: '', brand: '', kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 };
@@ -4075,7 +4336,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -5679,6 +5940,7 @@ function bindApp() {
       if (go === 'goals') openGoalsSheet();
       if (go === 'customFoods') openCustomFoodsSheet();
       if (go === 'templates') openTemplatesSheet();
+      if (go === 'dbFoods') openDbFoodsSheet();
       if (go === 'debug') openDebugSheet();
       if (go === 'cloud') openCloudSheet();
       if (go === 'export') handleExport();
