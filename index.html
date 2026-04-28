@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.4.1 -->
+<!-- NUTRILOG_VERSION: 1.6.0 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -311,6 +311,12 @@
     color: var(--text-2);
     border-radius: 10px;
     transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+    flex-shrink: 0;
+  }
+  .datenav button svg {
+    width: 22px;
+    height: 22px;
+    display: block;
   }
   .datenav button:hover, .datenav button:active {
     background: var(--surface-2);
@@ -1161,7 +1167,9 @@ function emptyDiary() {
   return { breakfast: [], lunch: [], dinner: [], snack: [] };
 }
 function defaultGoals() {
-  return { calories: 2000, protein: 150, carbs: 220, fat: 65, fiber: 30, sugar: 50, sodium: 2300 };
+  // Valori a zero: l'utente li imposta personalmente la prima volta dal Profilo.
+  // Niente preset/template predefiniti - solo personalizzazione.
+  return { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 };
 }
 /**
  * Schema goals:
@@ -1381,6 +1389,47 @@ function fmtBytes(n) {
   if (n < 1024) return n + ' B';
   if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
   return (n / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+/* ─── DIARY RETENTION ──────────────────────────────────────
+   Mantiene solo gli ultimi N giorni di diario (default: 14).
+   Cancella sia in locale che dal gist cloud al prossimo push.
+   Custom foods, template, obiettivi NON vengono toccati.
+   ──────────────────────────────────────────────────────── */
+const DIARY_RETENTION_DAYS = 14;
+
+async function pruneOldDiaryEntries() {
+  if (!state.user || !state.user.userId) return { deleted: 0 };
+  const userId = state.user.userId;
+  const todayMs = new Date(todayISO()).getTime();
+  const cutoffMs = todayMs - (DIARY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const diaryKeys = await sl(`diary:${userId}:`);
+  let deleted = 0;
+  for (const k of diaryKeys) {
+    const datePart = k.split(':').pop();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) continue;
+    const dateMs = new Date(datePart).getTime();
+    if (isNaN(dateMs)) continue;
+    if (dateMs < cutoffMs) {
+      await sd(k);
+      deleted++;
+      dlog(`PRUNE: removed diary ${datePart}`);
+    }
+  }
+  if (deleted > 0) {
+    dlog(`PRUNE: ${deleted} giorni rimossi (>${DIARY_RETENTION_DAYS}gg)`);
+    // Forza il push immediato per propagare la cancellazione anche nel cloud
+    if (cloudBackup && cloudBackup.isConfigured && cloudBackup.isConfigured()) {
+      try {
+        const fresh = await exportUserData();
+        await cloudBackup.push(APP_ID, fresh);
+        dlog('PRUNE: cloud sync after prune OK');
+      } catch (e) {
+        dlog('PRUNE: cloud sync failed: ' + e.message);
+      }
+    }
+  }
+  return { deleted };
 }
 
 async function exportUserData() {
@@ -1805,11 +1854,12 @@ async function moveDiaryEntry(fromMeal, entryId, toMeal) {
 }
 
 async function findRecentDaysWithMeal(meal, excludeDate, limit = 14) {
-  // Scorre indietro nel tempo fino a 60 giorni, restituisce i giorni con
-  // almeno un elemento nel pasto richiesto (max `limit` risultati).
+  // Scorre indietro nel tempo fino al periodo di ritenzione (DIARY_RETENTION_DAYS),
+  // restituisce i giorni con almeno un elemento nel pasto richiesto.
   const out = [];
   let cursor = excludeDate;
-  for (let i = 0; i < 60 && out.length < limit; i++) {
+  const scanLimit = Math.max(DIARY_RETENTION_DAYS, 14);
+  for (let i = 0; i < scanLimit && out.length < limit; i++) {
     cursor = shiftDate(cursor, -1);
     const d = await sg(`diary:${state.user.userId}:${cursor}`);
     if (d && Array.isArray(d[meal]) && d[meal].length > 0) {
@@ -1938,197 +1988,295 @@ function normalizeOFF(p) {
 /* ─── LOCAL FOOD DATABASE (Italian) ─────────────────────── */
 /* Valori nutrizionali per 100g di prodotto (fonte: CREA-INRAN, etichette) */
 const LOCAL_FOODS = [
-  // Frutta
-  { name: 'Mela', brand: '', kcal: 52, protein: 0.3, carbs: 14, fat: 0.2, fiber: 2.4, sugar: 10, sodium: 1 },
-  { name: 'Pera', brand: '', kcal: 57, protein: 0.4, carbs: 15, fat: 0.1, fiber: 3.1, sugar: 10, sodium: 1 },
-  { name: 'Banana', brand: '', kcal: 89, protein: 1.1, carbs: 23, fat: 0.3, fiber: 2.6, sugar: 12, sodium: 1 },
-  { name: 'Arancia', brand: '', kcal: 47, protein: 0.9, carbs: 12, fat: 0.1, fiber: 2.4, sugar: 9, sodium: 0 },
-  { name: 'Mandarino', brand: '', kcal: 53, protein: 0.8, carbs: 13, fat: 0.3, fiber: 1.8, sugar: 11, sodium: 2 },
-  { name: 'Limone', brand: '', kcal: 29, protein: 1.1, carbs: 9, fat: 0.3, fiber: 2.8, sugar: 2.5, sodium: 2 },
-  { name: 'Pompelmo', brand: '', kcal: 42, protein: 0.8, carbs: 11, fat: 0.1, fiber: 1.6, sugar: 7, sodium: 0 },
-  { name: 'Fragole', brand: '', kcal: 32, protein: 0.7, carbs: 7.7, fat: 0.3, fiber: 2, sugar: 4.9, sodium: 1 },
-  { name: 'Mirtilli', brand: '', kcal: 57, protein: 0.7, carbs: 14, fat: 0.3, fiber: 2.4, sugar: 10, sodium: 1 },
-  { name: 'Lamponi', brand: '', kcal: 52, protein: 1.2, carbs: 12, fat: 0.7, fiber: 6.5, sugar: 4.4, sodium: 1 },
+  // ═══ FRUTTA FRESCA ═══════════════════════════════════════════════
+  { name: 'Mela', brand: '', kcal: 52, protein: 0.3, carbs: 13.8, fat: 0.2, fiber: 2.4, sugar: 10.4, sodium: 1 },
+  { name: 'Banana', brand: '', kcal: 89, protein: 1.1, carbs: 22.8, fat: 0.3, fiber: 2.6, sugar: 12.2, sodium: 1 },
+  { name: 'Pera', brand: '', kcal: 57, protein: 0.4, carbs: 15.2, fat: 0.1, fiber: 3.1, sugar: 9.8, sodium: 1 },
+  { name: 'Arancia', brand: '', kcal: 47, protein: 0.9, carbs: 11.8, fat: 0.1, fiber: 2.4, sugar: 9.4, sodium: 0 },
+  { name: 'Mandarino', brand: '', kcal: 53, protein: 0.8, carbs: 13.3, fat: 0.3, fiber: 1.8, sugar: 10.6, sodium: 2 },
+  { name: 'Clementina', brand: '', kcal: 47, protein: 0.9, carbs: 12.0, fat: 0.2, fiber: 1.7, sugar: 9.2, sodium: 1 },
+  { name: 'Limone', brand: '', kcal: 29, protein: 1.1, carbs: 9.3, fat: 0.3, fiber: 2.8, sugar: 2.5, sodium: 2 },
+  { name: 'Pompelmo', brand: '', kcal: 42, protein: 0.8, carbs: 10.7, fat: 0.1, fiber: 1.6, sugar: 6.9, sodium: 0 },
+  { name: 'Kiwi', brand: '', kcal: 61, protein: 1.1, carbs: 14.7, fat: 0.5, fiber: 3.0, sugar: 9.0, sodium: 3 },
+  { name: 'Fragole', brand: '', kcal: 32, protein: 0.7, carbs: 7.7, fat: 0.3, fiber: 2.0, sugar: 4.9, sodium: 1 },
+  { name: 'Lamponi', brand: '', kcal: 52, protein: 1.2, carbs: 11.9, fat: 0.7, fiber: 6.5, sugar: 4.4, sodium: 1 },
+  { name: 'Mirtilli', brand: '', kcal: 57, protein: 0.7, carbs: 14.5, fat: 0.3, fiber: 2.4, sugar: 10.0, sodium: 1 },
+  { name: 'More', brand: '', kcal: 43, protein: 1.4, carbs: 9.6, fat: 0.5, fiber: 5.3, sugar: 4.9, sodium: 1 },
+  { name: 'Uva', brand: '', kcal: 69, protein: 0.7, carbs: 18.1, fat: 0.2, fiber: 0.9, sugar: 15.5, sodium: 2 },
+  { name: 'Ananas', brand: '', kcal: 50, protein: 0.5, carbs: 13.1, fat: 0.1, fiber: 1.4, sugar: 9.9, sodium: 1 },
+  { name: 'Anguria', brand: '', kcal: 30, protein: 0.6, carbs: 7.6, fat: 0.2, fiber: 0.4, sugar: 6.2, sodium: 1 },
+  { name: 'Melone', brand: '', kcal: 33, protein: 0.8, carbs: 8.2, fat: 0.2, fiber: 0.7, sugar: 7.9, sodium: 16 },
   { name: 'Pesca', brand: '', kcal: 39, protein: 0.9, carbs: 9.5, fat: 0.3, fiber: 1.5, sugar: 8.4, sodium: 0 },
-  { name: 'Albicocca', brand: '', kcal: 48, protein: 1.4, carbs: 11, fat: 0.4, fiber: 2, sugar: 9, sodium: 1 },
-  { name: 'Prugna', brand: '', kcal: 46, protein: 0.7, carbs: 11, fat: 0.3, fiber: 1.4, sugar: 10, sodium: 0 },
-  { name: 'Ciliegie', brand: '', kcal: 63, protein: 1.1, carbs: 16, fat: 0.2, fiber: 2.1, sugar: 13, sodium: 0 },
-  { name: 'Uva', brand: '', kcal: 69, protein: 0.7, carbs: 18, fat: 0.2, fiber: 0.9, sugar: 16, sodium: 2 },
-  { name: 'Kiwi', brand: '', kcal: 61, protein: 1.1, carbs: 15, fat: 0.5, fiber: 3, sugar: 9, sodium: 3 },
-  { name: 'Ananas', brand: '', kcal: 50, protein: 0.5, carbs: 13, fat: 0.1, fiber: 1.4, sugar: 10, sodium: 1 },
-  { name: 'Mango', brand: '', kcal: 60, protein: 0.8, carbs: 15, fat: 0.4, fiber: 1.6, sugar: 14, sodium: 1 },
-  { name: 'Melone', brand: '', kcal: 34, protein: 0.8, carbs: 8, fat: 0.2, fiber: 0.9, sugar: 8, sodium: 16 },
-  { name: 'Anguria', brand: '', kcal: 30, protein: 0.6, carbs: 7.6, fat: 0.2, fiber: 0.4, sugar: 6, sodium: 1 },
-  { name: 'Fichi', brand: '', kcal: 74, protein: 0.8, carbs: 19, fat: 0.3, fiber: 2.9, sugar: 16, sodium: 1 },
-  { name: 'Avocado', brand: '', kcal: 160, protein: 2, carbs: 9, fat: 15, fiber: 6.7, sugar: 0.7, sodium: 7 },
-  { name: 'Datteri', brand: '', kcal: 277, protein: 1.8, carbs: 75, fat: 0.2, fiber: 6.7, sugar: 63, sodium: 1 },
+  { name: 'Albicocca', brand: '', kcal: 48, protein: 1.4, carbs: 11.1, fat: 0.4, fiber: 2.0, sugar: 9.2, sodium: 1 },
+  { name: 'Susine/Prugne', brand: '', kcal: 46, protein: 0.7, carbs: 11.4, fat: 0.3, fiber: 1.4, sugar: 9.9, sodium: 0 },
+  { name: 'Ciliegie', brand: '', kcal: 63, protein: 1.1, carbs: 16.0, fat: 0.2, fiber: 2.1, sugar: 12.8, sodium: 0 },
+  { name: 'Cachi', brand: '', kcal: 70, protein: 0.6, carbs: 18.6, fat: 0.2, fiber: 3.6, sugar: 12.5, sodium: 1 },
+  { name: 'Fichi', brand: '', kcal: 74, protein: 0.8, carbs: 19.2, fat: 0.3, fiber: 2.9, sugar: 16.3, sodium: 1 },
+  { name: 'Avocado', brand: '', kcal: 160, protein: 2.0, carbs: 8.5, fat: 14.7, fiber: 6.7, sugar: 0.7, sodium: 7 },
+  { name: 'Cocco', brand: '', kcal: 354, protein: 3.3, carbs: 15.2, fat: 33.5, fiber: 9.0, sugar: 6.2, sodium: 20 },
+  { name: 'Datteri', brand: '', kcal: 277, protein: 1.8, carbs: 75.0, fat: 0.2, fiber: 6.7, sugar: 66.5, sodium: 1 },
+  { name: 'Uva passa', brand: '', kcal: 299, protein: 3.1, carbs: 79.2, fat: 0.5, fiber: 3.7, sugar: 59.2, sodium: 11 },
+  { name: 'Albicocche secche', brand: '', kcal: 241, protein: 3.4, carbs: 62.6, fat: 0.5, fiber: 7.3, sugar: 53.4, sodium: 10 },
+  { name: 'Prugne secche', brand: '', kcal: 240, protein: 2.2, carbs: 63.9, fat: 0.4, fiber: 7.1, sugar: 38.1, sodium: 2 },
 
-  // Verdura
+  // ═══ VERDURE FRESCHE (a crudo) ════════════════════════════════════
   { name: 'Pomodoro', brand: '', kcal: 18, protein: 0.9, carbs: 3.9, fat: 0.2, fiber: 1.2, sugar: 2.6, sodium: 5 },
-  { name: 'Pomodorini', brand: '', kcal: 20, protein: 1, carbs: 4, fat: 0.2, fiber: 1.4, sugar: 2.8, sodium: 5 },
-  { name: 'Carota', brand: '', kcal: 41, protein: 0.9, carbs: 10, fat: 0.2, fiber: 2.8, sugar: 4.7, sodium: 69 },
-  { name: 'Zucchina', brand: '', kcal: 17, protein: 1.2, carbs: 3.1, fat: 0.3, fiber: 1, sugar: 2.5, sodium: 8 },
-  { name: 'Melanzana', brand: '', kcal: 25, protein: 1, carbs: 6, fat: 0.2, fiber: 3, sugar: 3.5, sodium: 2 },
-  { name: 'Peperone', brand: '', kcal: 31, protein: 1, carbs: 6, fat: 0.3, fiber: 2.1, sugar: 4.2, sodium: 4 },
-  { name: 'Cetriolo', brand: '', kcal: 16, protein: 0.7, carbs: 3.6, fat: 0.1, fiber: 0.5, sugar: 1.7, sodium: 2 },
-  { name: 'Insalata mista', brand: '', kcal: 17, protein: 1.4, carbs: 2.9, fat: 0.2, fiber: 2, sugar: 1.5, sodium: 30 },
-  { name: 'Lattuga', brand: '', kcal: 15, protein: 1.4, carbs: 2.9, fat: 0.2, fiber: 1.3, sugar: 0.8, sodium: 28 },
-  { name: 'Rucola', brand: '', kcal: 25, protein: 2.6, carbs: 3.7, fat: 0.7, fiber: 1.6, sugar: 2, sodium: 27 },
-  { name: 'Spinaci', brand: '', kcal: 23, protein: 2.9, carbs: 3.6, fat: 0.4, fiber: 2.2, sugar: 0.4, sodium: 79 },
-  { name: 'Broccoli', brand: '', kcal: 34, protein: 2.8, carbs: 7, fat: 0.4, fiber: 2.6, sugar: 1.7, sodium: 33 },
-  { name: 'Cavolfiore', brand: '', kcal: 25, protein: 1.9, carbs: 5, fat: 0.3, fiber: 2, sugar: 1.9, sodium: 30 },
-  { name: 'Finocchio', brand: '', kcal: 31, protein: 1.2, carbs: 7.3, fat: 0.2, fiber: 3.1, sugar: 3.9, sodium: 52 },
+  { name: 'Pomodorini ciliegino', brand: '', kcal: 18, protein: 0.9, carbs: 3.9, fat: 0.2, fiber: 1.2, sugar: 2.6, sodium: 5 },
+  { name: 'Pomodoro datterino', brand: '', kcal: 21, protein: 1.0, carbs: 4.5, fat: 0.2, fiber: 1.5, sugar: 3.2, sodium: 6 },
+  { name: 'Insalata lattuga', brand: '', kcal: 15, protein: 1.4, carbs: 2.9, fat: 0.2, fiber: 1.3, sugar: 0.8, sodium: 28 },
+  { name: 'Insalata iceberg', brand: '', kcal: 14, protein: 0.9, carbs: 3.0, fat: 0.1, fiber: 1.2, sugar: 2.0, sodium: 10 },
+  { name: 'Rucola', brand: '', kcal: 25, protein: 2.6, carbs: 3.7, fat: 0.7, fiber: 1.6, sugar: 2.1, sodium: 27 },
   { name: 'Radicchio', brand: '', kcal: 23, protein: 1.4, carbs: 4.5, fat: 0.3, fiber: 0.9, sugar: 0.6, sodium: 22 },
-  { name: 'Zucca', brand: '', kcal: 26, protein: 1, carbs: 6.5, fat: 0.1, fiber: 0.5, sugar: 2.8, sodium: 1 },
-  { name: 'Patata', brand: '', kcal: 77, protein: 2, carbs: 17, fat: 0.1, fiber: 2.2, sugar: 0.8, sodium: 6 },
-  { name: 'Patata dolce', brand: '', kcal: 86, protein: 1.6, carbs: 20, fat: 0.1, fiber: 3, sugar: 4.2, sodium: 55 },
-  { name: 'Mais', brand: '', kcal: 86, protein: 3.3, carbs: 19, fat: 1.4, fiber: 2.7, sugar: 6.3, sodium: 15 },
-  { name: 'Funghi champignon', brand: '', kcal: 22, protein: 3.1, carbs: 3.3, fat: 0.3, fiber: 1, sugar: 2, sodium: 5 },
+  { name: 'Spinaci', brand: '', kcal: 23, protein: 2.9, carbs: 3.6, fat: 0.4, fiber: 2.2, sugar: 0.4, sodium: 79 },
+  { name: 'Bietola', brand: '', kcal: 19, protein: 1.8, carbs: 3.7, fat: 0.2, fiber: 1.6, sugar: 1.1, sodium: 213 },
+  { name: 'Cicoria', brand: '', kcal: 17, protein: 1.7, carbs: 3.2, fat: 0.3, fiber: 3.1, sugar: 0.7, sodium: 45 },
+  { name: 'Carota', brand: '', kcal: 41, protein: 0.9, carbs: 9.6, fat: 0.2, fiber: 2.8, sugar: 4.7, sodium: 69 },
+  { name: 'Sedano', brand: '', kcal: 16, protein: 0.7, carbs: 3.0, fat: 0.2, fiber: 1.6, sugar: 1.3, sodium: 80 },
+  { name: 'Finocchio', brand: '', kcal: 31, protein: 1.2, carbs: 7.3, fat: 0.2, fiber: 3.1, sugar: 4.0, sodium: 52 },
   { name: 'Cipolla', brand: '', kcal: 40, protein: 1.1, carbs: 9.3, fat: 0.1, fiber: 1.7, sugar: 4.2, sodium: 4 },
+  { name: 'Cipolla rossa', brand: '', kcal: 40, protein: 1.1, carbs: 9.3, fat: 0.1, fiber: 1.7, sugar: 4.2, sodium: 4 },
+  { name: 'Aglio', brand: '', kcal: 149, protein: 6.4, carbs: 33.1, fat: 0.5, fiber: 2.1, sugar: 1.0, sodium: 17 },
+  { name: 'Porro', brand: '', kcal: 61, protein: 1.5, carbs: 14.2, fat: 0.3, fiber: 1.8, sugar: 3.9, sodium: 20 },
+  { name: 'Peperone giallo', brand: '', kcal: 27, protein: 1.0, carbs: 6.3, fat: 0.2, fiber: 0.9, sugar: 4.2, sodium: 2 },
+  { name: 'Peperone rosso', brand: '', kcal: 31, protein: 1.0, carbs: 6.0, fat: 0.3, fiber: 2.1, sugar: 4.2, sodium: 4 },
+  { name: 'Peperone verde', brand: '', kcal: 20, protein: 0.9, carbs: 4.6, fat: 0.2, fiber: 1.7, sugar: 2.4, sodium: 3 },
+  { name: 'Zucchine', brand: '', kcal: 17, protein: 1.2, carbs: 3.1, fat: 0.3, fiber: 1.0, sugar: 2.5, sodium: 8 },
+  { name: 'Melanzana', brand: '', kcal: 25, protein: 1.0, carbs: 5.9, fat: 0.2, fiber: 3.0, sugar: 3.5, sodium: 2 },
+  { name: 'Cetriolo', brand: '', kcal: 16, protein: 0.7, carbs: 3.6, fat: 0.1, fiber: 0.5, sugar: 1.7, sodium: 2 },
+  { name: 'Zucca', brand: '', kcal: 26, protein: 1.0, carbs: 6.5, fat: 0.1, fiber: 0.5, sugar: 2.8, sodium: 1 },
+  { name: 'Broccoli', brand: '', kcal: 34, protein: 2.8, carbs: 6.6, fat: 0.4, fiber: 2.6, sugar: 1.7, sodium: 33 },
+  { name: 'Cavolfiore', brand: '', kcal: 25, protein: 1.9, carbs: 5.0, fat: 0.3, fiber: 2.0, sugar: 1.9, sodium: 30 },
+  { name: 'Cavolo verza', brand: '', kcal: 27, protein: 2.4, carbs: 4.8, fat: 0.4, fiber: 3.5, sugar: 1.5, sodium: 25 },
+  { name: 'Cavolo cappuccio', brand: '', kcal: 25, protein: 1.3, carbs: 5.8, fat: 0.1, fiber: 2.5, sugar: 3.2, sodium: 18 },
+  { name: 'Cavolini di Bruxelles', brand: '', kcal: 43, protein: 3.4, carbs: 9.0, fat: 0.3, fiber: 3.8, sugar: 2.2, sodium: 25 },
+  { name: 'Asparagi', brand: '', kcal: 20, protein: 2.2, carbs: 3.9, fat: 0.1, fiber: 2.1, sugar: 1.9, sodium: 2 },
+  { name: 'Funghi champignon', brand: '', kcal: 22, protein: 3.1, carbs: 3.3, fat: 0.3, fiber: 1.0, sugar: 2.0, sodium: 5 },
+  { name: 'Funghi porcini', brand: '', kcal: 26, protein: 3.9, carbs: 1.0, fat: 0.7, fiber: 2.5, sugar: 0.5, sodium: 5 },
+  { name: 'Patata', brand: '', kcal: 77, protein: 2.0, carbs: 17.5, fat: 0.1, fiber: 2.2, sugar: 0.8, sodium: 6 },
+  { name: 'Patata dolce/Batata', brand: '', kcal: 86, protein: 1.6, carbs: 20.1, fat: 0.1, fiber: 3.0, sugar: 4.2, sodium: 55 },
+  { name: 'Topinambur', brand: '', kcal: 73, protein: 2.0, carbs: 17.4, fat: 0.0, fiber: 1.6, sugar: 9.6, sodium: 4 },
+  { name: 'Rapanelli', brand: '', kcal: 16, protein: 0.7, carbs: 3.4, fat: 0.1, fiber: 1.6, sugar: 1.9, sodium: 39 },
+  { name: 'Barbabietola', brand: '', kcal: 43, protein: 1.6, carbs: 9.6, fat: 0.2, fiber: 2.8, sugar: 6.8, sodium: 78 },
 
-  // Carne
-  { name: 'Petto di pollo', brand: '', kcal: 110, protein: 23, carbs: 0, fat: 1.5, fiber: 0, sugar: 0, sodium: 65 },
-  { name: 'Coscia di pollo', brand: '', kcal: 177, protein: 17, carbs: 0, fat: 12, fiber: 0, sugar: 0, sodium: 80 },
-  { name: 'Petto di tacchino', brand: '', kcal: 107, protein: 24, carbs: 0, fat: 1, fiber: 0, sugar: 0, sodium: 60 },
-  { name: 'Manzo magro', brand: '', kcal: 130, protein: 22, carbs: 0, fat: 5, fiber: 0, sugar: 0, sodium: 55 },
-  { name: 'Manzo macinato', brand: '', kcal: 250, protein: 18, carbs: 0, fat: 20, fiber: 0, sugar: 0, sodium: 70 },
-  { name: 'Filetto di manzo', brand: '', kcal: 174, protein: 21, carbs: 0, fat: 10, fiber: 0, sugar: 0, sodium: 55 },
-  { name: 'Lonza di maiale', brand: '', kcal: 153, protein: 22, carbs: 0, fat: 7, fiber: 0, sugar: 0, sodium: 60 },
-  { name: 'Salsiccia di maiale', brand: '', kcal: 304, protein: 16, carbs: 1, fat: 26, fiber: 0, sugar: 0, sodium: 950 },
-  { name: 'Vitello', brand: '', kcal: 132, protein: 21, carbs: 0, fat: 5, fiber: 0, sugar: 0, sodium: 75 },
-  { name: 'Bresaola', brand: '', kcal: 151, protein: 33, carbs: 0, fat: 2, fiber: 0, sugar: 0, sodium: 1600 },
-  { name: 'Prosciutto crudo', brand: '', kcal: 224, protein: 26, carbs: 0.3, fat: 13, fiber: 0, sugar: 0, sodium: 2650 },
-  { name: 'Prosciutto cotto', brand: '', kcal: 145, protein: 20, carbs: 0.5, fat: 7, fiber: 0, sugar: 0.5, sodium: 1050 },
-  { name: 'Mortadella', brand: '', kcal: 288, protein: 15, carbs: 1, fat: 25, fiber: 0, sugar: 0, sodium: 1050 },
-  { name: 'Salame Milano', brand: '', kcal: 390, protein: 25, carbs: 1, fat: 32, fiber: 0, sugar: 0, sodium: 1700 },
-  { name: 'Speck', brand: '', kcal: 303, protein: 28, carbs: 0, fat: 21, fiber: 0, sugar: 0, sodium: 1600 },
-  { name: 'Pancetta', brand: '', kcal: 458, protein: 12, carbs: 0, fat: 45, fiber: 0, sugar: 0, sodium: 900 },
-  { name: 'Wurstel', brand: '', kcal: 270, protein: 13, carbs: 2, fat: 24, fiber: 0, sugar: 1, sodium: 900 },
+  // ═══ LEGUMI (secchi) ══════════════════════════════════════════════
+  { name: 'Lenticchie secche', brand: '', kcal: 353, protein: 25.0, carbs: 60.1, fat: 1.1, fiber: 10.7, sugar: 2.0, sodium: 6 },
+  { name: 'Ceci secchi', brand: '', kcal: 364, protein: 19.0, carbs: 61.0, fat: 6.0, fiber: 17.4, sugar: 10.7, sodium: 24 },
+  { name: 'Fagioli borlotti secchi', brand: '', kcal: 343, protein: 23.0, carbs: 60.1, fat: 1.4, fiber: 25.4, sugar: 2.4, sodium: 4 },
+  { name: 'Fagioli cannellini secchi', brand: '', kcal: 333, protein: 23.4, carbs: 51.0, fat: 0.8, fiber: 19.0, sugar: 2.1, sodium: 16 },
+  { name: 'Fagioli neri secchi', brand: '', kcal: 341, protein: 21.6, carbs: 62.4, fat: 1.4, fiber: 15.5, sugar: 2.1, sodium: 5 },
+  { name: 'Piselli secchi', brand: '', kcal: 305, protein: 21.7, carbs: 54.0, fat: 2.0, fiber: 15.7, sugar: 8.0, sodium: 15 },
+  { name: 'Fave secche', brand: '', kcal: 343, protein: 26.1, carbs: 58.3, fat: 1.7, fiber: 25.0, sugar: 5.7, sodium: 13 },
+  { name: 'Soia gialla secca', brand: '', kcal: 446, protein: 36.5, carbs: 30.2, fat: 19.9, fiber: 9.3, sugar: 7.3, sodium: 2 },
+  { name: 'Edamame', brand: '', kcal: 122, protein: 11.2, carbs: 8.9, fat: 5.2, fiber: 5.2, sugar: 2.2, sodium: 6 },
 
-  // Pesce
-  { name: 'Salmone fresco', brand: '', kcal: 208, protein: 20, carbs: 0, fat: 13, fiber: 0, sugar: 0, sodium: 59 },
-  { name: 'Salmone affumicato', brand: '', kcal: 117, protein: 18, carbs: 0, fat: 4.3, fiber: 0, sugar: 0, sodium: 1700 },
-  { name: 'Tonno al naturale', brand: '', kcal: 103, protein: 24, carbs: 0, fat: 0.7, fiber: 0, sugar: 0, sodium: 290 },
-  { name: 'Tonno sott\'olio', brand: '', kcal: 192, protein: 25, carbs: 0, fat: 10, fiber: 0, sugar: 0, sodium: 360 },
-  { name: 'Merluzzo', brand: '', kcal: 82, protein: 18, carbs: 0, fat: 0.7, fiber: 0, sugar: 0, sodium: 54 },
-  { name: 'Orata', brand: '', kcal: 121, protein: 20, carbs: 0, fat: 4.5, fiber: 0, sugar: 0, sodium: 60 },
-  { name: 'Branzino', brand: '', kcal: 97, protein: 18, carbs: 0, fat: 2.5, fiber: 0, sugar: 0, sodium: 70 },
-  { name: 'Sgombro', brand: '', kcal: 205, protein: 19, carbs: 0, fat: 14, fiber: 0, sugar: 0, sodium: 90 },
-  { name: 'Sardine', brand: '', kcal: 208, protein: 25, carbs: 0, fat: 11, fiber: 0, sugar: 0, sodium: 505 },
-  { name: 'Acciughe sott\'olio', brand: '', kcal: 210, protein: 28, carbs: 0, fat: 11, fiber: 0, sugar: 0, sodium: 3670 },
-  { name: 'Gamberi', brand: '', kcal: 99, protein: 24, carbs: 0.2, fat: 0.3, fiber: 0, sugar: 0, sodium: 111 },
-  { name: 'Calamari', brand: '', kcal: 92, protein: 16, carbs: 3.1, fat: 1.4, fiber: 0, sugar: 0, sodium: 44 },
-  { name: 'Polpo', brand: '', kcal: 82, protein: 15, carbs: 2.2, fat: 1, fiber: 0, sugar: 0, sodium: 230 },
-  { name: 'Cozze', brand: '', kcal: 86, protein: 12, carbs: 3.7, fat: 2.2, fiber: 0, sugar: 0, sodium: 286 },
+  // ═══ CEREALI E DERIVATI (a crudo) ═════════════════════════════════
+  { name: 'Riso bianco', brand: '', kcal: 360, protein: 6.7, carbs: 80.4, fat: 0.4, fiber: 1.0, sugar: 0.0, sodium: 5 },
+  { name: 'Riso integrale', brand: '', kcal: 367, protein: 7.5, carbs: 76.9, fat: 1.9, fiber: 1.9, sugar: 0.9, sodium: 9 },
+  { name: 'Riso basmati', brand: '', kcal: 351, protein: 7.5, carbs: 78.0, fat: 0.9, fiber: 1.3, sugar: 0.1, sodium: 1 },
+  { name: 'Riso venere', brand: '', kcal: 365, protein: 7.6, carbs: 76.0, fat: 2.5, fiber: 2.0, sugar: 0.8, sodium: 5 },
+  { name: 'Riso arborio', brand: '', kcal: 358, protein: 6.5, carbs: 80.0, fat: 0.5, fiber: 1.4, sugar: 0.0, sodium: 5 },
+  { name: 'Pasta di semola', brand: '', kcal: 353, protein: 11.5, carbs: 73.9, fat: 1.4, fiber: 2.7, sugar: 3.2, sodium: 4 },
+  { name: 'Pasta integrale', brand: '', kcal: 324, protein: 13.0, carbs: 64.9, fat: 2.5, fiber: 11.5, sugar: 3.5, sodium: 5 },
+  { name: 'Pasta all\'uovo', brand: '', kcal: 384, protein: 13.0, carbs: 73.0, fat: 4.7, fiber: 3.2, sugar: 2.0, sodium: 25 },
+  { name: 'Spaghetti', brand: '', kcal: 353, protein: 11.5, carbs: 73.9, fat: 1.4, fiber: 2.7, sugar: 3.2, sodium: 4 },
+  { name: 'Penne', brand: '', kcal: 353, protein: 11.5, carbs: 73.9, fat: 1.4, fiber: 2.7, sugar: 3.2, sodium: 4 },
+  { name: 'Fusilli', brand: '', kcal: 353, protein: 11.5, carbs: 73.9, fat: 1.4, fiber: 2.7, sugar: 3.2, sodium: 4 },
+  { name: 'Farfalle', brand: '', kcal: 353, protein: 11.5, carbs: 73.9, fat: 1.4, fiber: 2.7, sugar: 3.2, sodium: 4 },
+  { name: 'Couscous', brand: '', kcal: 376, protein: 12.8, carbs: 77.4, fat: 0.6, fiber: 5.0, sugar: 0.6, sodium: 10 },
+  { name: 'Bulgur', brand: '', kcal: 342, protein: 12.3, carbs: 75.9, fat: 1.3, fiber: 18.3, sugar: 0.4, sodium: 17 },
+  { name: 'Quinoa', brand: '', kcal: 368, protein: 14.1, carbs: 64.2, fat: 6.1, fiber: 7.0, sugar: 0.0, sodium: 5 },
+  { name: 'Farro perlato', brand: '', kcal: 335, protein: 15.1, carbs: 67.1, fat: 2.5, fiber: 6.8, sugar: 1.0, sodium: 18 },
+  { name: 'Orzo perlato', brand: '', kcal: 354, protein: 12.5, carbs: 73.5, fat: 2.3, fiber: 17.3, sugar: 0.8, sodium: 12 },
+  { name: 'Avena fiocchi', brand: '', kcal: 379, protein: 13.5, carbs: 67.7, fat: 6.5, fiber: 10.1, sugar: 1.0, sodium: 6 },
+  { name: 'Mais (chicchi)', brand: '', kcal: 365, protein: 9.4, carbs: 74.3, fat: 4.7, fiber: 7.3, sugar: 0.6, sodium: 35 },
+  { name: 'Polenta (farina mais)', brand: '', kcal: 358, protein: 8.3, carbs: 78.4, fat: 1.9, fiber: 4.0, sugar: 0.7, sodium: 9 },
+  { name: 'Farina 00', brand: '', kcal: 343, protein: 11.0, carbs: 77.3, fat: 1.0, fiber: 2.2, sugar: 1.6, sodium: 2 },
+  { name: 'Farina integrale', brand: '', kcal: 319, protein: 11.9, carbs: 67.8, fat: 1.9, fiber: 8.4, sugar: 0.4, sodium: 2 },
+  { name: 'Farina di mandorle', brand: '', kcal: 626, protein: 21.0, carbs: 21.6, fat: 53.4, fiber: 11.8, sugar: 4.4, sodium: 1 },
+  { name: 'Farina di cocco', brand: '', kcal: 425, protein: 19.0, carbs: 60.0, fat: 12.0, fiber: 39.0, sugar: 9.0, sodium: 30 },
 
-  // Uova e latticini
-  { name: 'Uova intere', brand: '', kcal: 155, protein: 13, carbs: 1.1, fat: 11, fiber: 0, sugar: 1.1, sodium: 124 },
-  { name: 'Albume', brand: '', kcal: 52, protein: 11, carbs: 0.7, fat: 0.2, fiber: 0, sugar: 0.7, sodium: 166 },
+  // ═══ PANE E PRODOTTI DA FORNO ════════════════════════════════════
+  { name: 'Pane comune (tipo 0)', brand: '', kcal: 275, protein: 8.6, carbs: 56.0, fat: 1.0, fiber: 3.2, sugar: 1.9, sodium: 488 },
+  { name: 'Pane integrale', brand: '', kcal: 224, protein: 7.5, carbs: 48.5, fat: 1.3, fiber: 6.5, sugar: 5.4, sodium: 472 },
+  { name: 'Pane di segale', brand: '', kcal: 219, protein: 8.3, carbs: 45.8, fat: 1.7, fiber: 4.5, sugar: 3.8, sodium: 603 },
+  { name: 'Pane azzimo', brand: '', kcal: 377, protein: 11.0, carbs: 79.8, fat: 1.4, fiber: 3.4, sugar: 1.6, sodium: 30 },
+  { name: 'Grissini', brand: '', kcal: 433, protein: 12.3, carbs: 71.0, fat: 13.9, fiber: 2.7, sugar: 3.0, sodium: 510 },
+  { name: 'Crackers salati', brand: '', kcal: 428, protein: 9.4, carbs: 80.1, fat: 10.0, fiber: 3.0, sugar: 4.6, sodium: 1100 },
+  { name: 'Fette biscottate', brand: '', kcal: 408, protein: 11.5, carbs: 73.7, fat: 6.0, fiber: 5.0, sugar: 5.5, sodium: 600 },
+  { name: 'Pane carasau', brand: '', kcal: 380, protein: 12.0, carbs: 76.0, fat: 2.3, fiber: 4.5, sugar: 1.4, sodium: 800 },
+  { name: 'Piadina', brand: '', kcal: 305, protein: 8.5, carbs: 51.0, fat: 7.5, fiber: 2.5, sugar: 1.5, sodium: 770 },
+  { name: 'Tortilla di mais', brand: '', kcal: 305, protein: 7.7, carbs: 64.0, fat: 1.5, fiber: 7.2, sugar: 1.0, sodium: 14 },
+  { name: 'Pane di Altamura', brand: '', kcal: 289, protein: 9.5, carbs: 58.0, fat: 1.0, fiber: 3.5, sugar: 2.0, sodium: 480 },
+  { name: 'Focaccia genovese', brand: '', kcal: 324, protein: 7.0, carbs: 50.0, fat: 11.0, fiber: 2.0, sugar: 1.8, sodium: 600 },
+
+  // ═══ CARNI (tagli a crudo) ════════════════════════════════════════
+  { name: 'Petto di pollo crudo', brand: '', kcal: 100, protein: 23.3, carbs: 0.0, fat: 0.8, fiber: 0, sugar: 0, sodium: 52 },
+  { name: 'Coscia di pollo crudo', brand: '', kcal: 132, protein: 19.1, carbs: 0.0, fat: 6.0, fiber: 0, sugar: 0, sodium: 78 },
+  { name: 'Fesa di tacchino crudo', brand: '', kcal: 107, protein: 24.0, carbs: 0.0, fat: 1.0, fiber: 0, sugar: 0, sodium: 60 },
+  { name: 'Manzo magro (girello)', brand: '', kcal: 106, protein: 21.3, carbs: 0.0, fat: 2.2, fiber: 0, sugar: 0, sodium: 56 },
+  { name: 'Manzo (fesa)', brand: '', kcal: 117, protein: 22.0, carbs: 0.0, fat: 3.3, fiber: 0, sugar: 0, sodium: 53 },
+  { name: 'Bistecca di manzo', brand: '', kcal: 158, protein: 21.0, carbs: 0.0, fat: 8.0, fiber: 0, sugar: 0, sodium: 60 },
+  { name: 'Vitello (fesa)', brand: '', kcal: 107, protein: 20.7, carbs: 0.0, fat: 2.8, fiber: 0, sugar: 0, sodium: 90 },
+  { name: 'Maiale (lonza)', brand: '', kcal: 153, protein: 21.3, carbs: 0.0, fat: 7.3, fiber: 0, sugar: 0, sodium: 50 },
+  { name: 'Maiale (filetto)', brand: '', kcal: 119, protein: 22.0, carbs: 0.0, fat: 3.5, fiber: 0, sugar: 0, sodium: 55 },
+  { name: 'Maiale (costine)', brand: '', kcal: 287, protein: 16.0, carbs: 0.0, fat: 25.0, fiber: 0, sugar: 0, sodium: 60 },
+  { name: 'Coniglio', brand: '', kcal: 118, protein: 22.4, carbs: 0.0, fat: 3.1, fiber: 0, sugar: 0, sodium: 41 },
+  { name: 'Agnello (coscia)', brand: '', kcal: 159, protein: 20.0, carbs: 0.0, fat: 8.6, fiber: 0, sugar: 0, sodium: 70 },
+  { name: 'Cavallo', brand: '', kcal: 143, protein: 21.0, carbs: 0.0, fat: 6.1, fiber: 0, sugar: 0, sodium: 53 },
+  { name: 'Macinato di manzo', brand: '', kcal: 232, protein: 17.0, carbs: 0.0, fat: 18.0, fiber: 0, sugar: 0, sodium: 67 },
+  { name: 'Macinato magro di manzo', brand: '', kcal: 137, protein: 21.0, carbs: 0.0, fat: 5.5, fiber: 0, sugar: 0, sodium: 67 },
+
+  // ═══ SALUMI ═══════════════════════════════════════════════════════
+  { name: 'Prosciutto crudo', brand: '', kcal: 268, protein: 25.0, carbs: 0.0, fat: 18.6, fiber: 0, sugar: 0, sodium: 2570 },
+  { name: 'Prosciutto crudo di Parma', brand: '', kcal: 269, protein: 25.9, carbs: 0.0, fat: 18.4, fiber: 0, sugar: 0, sodium: 2680 },
+  { name: 'Bresaola', brand: '', kcal: 151, protein: 32.0, carbs: 0.5, fat: 2.0, fiber: 0, sugar: 0, sodium: 1597 },
+  { name: 'Speck', brand: '', kcal: 303, protein: 28.0, carbs: 0.5, fat: 21.0, fiber: 0, sugar: 0, sodium: 1900 },
+  { name: 'Salame Milano', brand: '', kcal: 384, protein: 24.0, carbs: 1.0, fat: 31.5, fiber: 0, sugar: 0, sodium: 1500 },
+  { name: 'Salame Napoli', brand: '', kcal: 425, protein: 25.5, carbs: 0.8, fat: 35.2, fiber: 0, sugar: 0, sodium: 1750 },
+  { name: 'Mortadella', brand: '', kcal: 317, protein: 14.7, carbs: 1.0, fat: 28.1, fiber: 0, sugar: 0, sodium: 980 },
+  { name: 'Pancetta', brand: '', kcal: 434, protein: 13.0, carbs: 0.0, fat: 42.0, fiber: 0, sugar: 0, sodium: 1500 },
+  { name: 'Guanciale', brand: '', kcal: 655, protein: 8.5, carbs: 0.5, fat: 69.0, fiber: 0, sugar: 0, sodium: 700 },
+  { name: 'Lardo', brand: '', kcal: 891, protein: 0.0, carbs: 0.0, fat: 99.0, fiber: 0, sugar: 0, sodium: 12 },
+  { name: 'Coppa piacentina', brand: '', kcal: 398, protein: 25.0, carbs: 0.5, fat: 33.0, fiber: 0, sugar: 0, sodium: 1700 },
+  { name: 'Wurstel', brand: '', kcal: 270, protein: 13.0, carbs: 1.5, fat: 24.0, fiber: 0, sugar: 1.5, sodium: 950 },
+
+  // ═══ PESCE (a crudo) ══════════════════════════════════════════════
+  { name: 'Salmone fresco', brand: '', kcal: 185, protein: 18.4, carbs: 0.0, fat: 12.0, fiber: 0, sugar: 0, sodium: 50 },
+  { name: 'Salmone affumicato', brand: '', kcal: 147, protein: 25.4, carbs: 0.0, fat: 4.5, fiber: 0, sugar: 0, sodium: 1880 },
+  { name: 'Tonno fresco', brand: '', kcal: 144, protein: 23.0, carbs: 0.0, fat: 5.0, fiber: 0, sugar: 0, sodium: 39 },
+  { name: 'Tonno in scatola al naturale', brand: '', kcal: 116, protein: 26.0, carbs: 0.0, fat: 1.0, fiber: 0, sugar: 0, sodium: 380 },
+  { name: 'Tonno in scatola olio oliva', brand: '', kcal: 192, protein: 25.0, carbs: 0.0, fat: 10.0, fiber: 0, sugar: 0, sodium: 380 },
+  { name: 'Branzino/Spigola', brand: '', kcal: 82, protein: 16.5, carbs: 0.0, fat: 1.5, fiber: 0, sugar: 0, sodium: 80 },
+  { name: 'Orata', brand: '', kcal: 121, protein: 19.7, carbs: 0.0, fat: 4.5, fiber: 0, sugar: 0, sodium: 88 },
+  { name: 'Merluzzo', brand: '', kcal: 71, protein: 17.0, carbs: 0.0, fat: 0.3, fiber: 0, sugar: 0, sodium: 78 },
+  { name: 'Nasello', brand: '', kcal: 71, protein: 17.0, carbs: 0.0, fat: 0.3, fiber: 0, sugar: 0, sodium: 78 },
+  { name: 'Sogliola', brand: '', kcal: 83, protein: 16.9, carbs: 0.7, fat: 1.4, fiber: 0, sugar: 0, sodium: 81 },
+  { name: 'Trota', brand: '', kcal: 86, protein: 14.7, carbs: 0.0, fat: 3.0, fiber: 0, sugar: 0, sodium: 27 },
+  { name: 'Pesce spada', brand: '', kcal: 121, protein: 16.9, carbs: 0.0, fat: 5.7, fiber: 0, sugar: 0, sodium: 90 },
+  { name: 'Sgombro', brand: '', kcal: 170, protein: 17.0, carbs: 0.0, fat: 11.1, fiber: 0, sugar: 0, sodium: 110 },
+  { name: 'Sardine fresche', brand: '', kcal: 129, protein: 20.8, carbs: 1.5, fat: 4.5, fiber: 0, sugar: 0, sodium: 80 },
+  { name: 'Acciughe fresche', brand: '', kcal: 96, protein: 16.8, carbs: 1.5, fat: 2.6, fiber: 0, sugar: 0, sodium: 100 },
+  { name: 'Acciughe sott\'olio', brand: '', kcal: 192, protein: 28.9, carbs: 0.0, fat: 8.8, fiber: 0, sugar: 0, sodium: 3700 },
+  { name: 'Gamberi', brand: '', kcal: 71, protein: 13.6, carbs: 1.5, fat: 1.0, fiber: 0, sugar: 0, sodium: 173 },
+  { name: 'Mazzancolle', brand: '', kcal: 94, protein: 19.2, carbs: 0.5, fat: 1.5, fiber: 0, sugar: 0, sodium: 200 },
+  { name: 'Calamari', brand: '', kcal: 68, protein: 12.6, carbs: 1.4, fat: 1.4, fiber: 0, sugar: 0, sodium: 110 },
+  { name: 'Polpo', brand: '', kcal: 57, protein: 10.6, carbs: 1.4, fat: 1.0, fiber: 0, sugar: 0, sodium: 230 },
+  { name: 'Seppie', brand: '', kcal: 72, protein: 14.0, carbs: 0.7, fat: 1.5, fiber: 0, sugar: 0, sodium: 372 },
+  { name: 'Cozze', brand: '', kcal: 84, protein: 11.7, carbs: 3.4, fat: 2.7, fiber: 0, sugar: 0, sodium: 286 },
+  { name: 'Vongole', brand: '', kcal: 72, protein: 10.2, carbs: 2.2, fat: 2.5, fiber: 0, sugar: 0, sodium: 56 },
+
+  // ═══ UOVA E DERIVATI ═════════════════════════════════════════════
+  { name: 'Uovo intero', brand: '', kcal: 143, protein: 12.6, carbs: 0.7, fat: 9.5, fiber: 0, sugar: 0.7, sodium: 142 },
+  { name: 'Albume d\'uovo', brand: '', kcal: 52, protein: 10.9, carbs: 0.7, fat: 0.2, fiber: 0, sugar: 0.7, sodium: 166 },
+  { name: 'Tuorlo d\'uovo', brand: '', kcal: 322, protein: 16.0, carbs: 3.6, fat: 26.5, fiber: 0, sugar: 0.6, sodium: 48 },
+
+  // ═══ LATTE E LATTICINI ════════════════════════════════════════════
   { name: 'Latte intero', brand: '', kcal: 64, protein: 3.3, carbs: 4.9, fat: 3.6, fiber: 0, sugar: 4.9, sodium: 50 },
-  { name: 'Latte parz. scremato', brand: '', kcal: 46, protein: 3.3, carbs: 4.9, fat: 1.5, fiber: 0, sugar: 4.9, sodium: 50 },
-  { name: 'Latte scremato', brand: '', kcal: 35, protein: 3.4, carbs: 5, fat: 0.2, fiber: 0, sugar: 5, sodium: 50 },
-  { name: 'Yogurt bianco intero', brand: '', kcal: 66, protein: 3.8, carbs: 4.3, fat: 3.9, fiber: 0, sugar: 4.3, sodium: 43 },
-  { name: 'Yogurt greco 0%', brand: '', kcal: 57, protein: 10, carbs: 3.9, fat: 0.2, fiber: 0, sugar: 3.9, sodium: 36 },
-  { name: 'Yogurt greco intero', brand: '', kcal: 97, protein: 9, carbs: 3.6, fat: 5, fiber: 0, sugar: 3.6, sodium: 35 },
-  { name: 'Yogurt magro alla frutta', brand: '', kcal: 75, protein: 4, carbs: 13, fat: 0.5, fiber: 0.3, sugar: 12, sodium: 45 },
-  { name: 'Ricotta vaccina', brand: '', kcal: 146, protein: 9, carbs: 3.2, fat: 11, fiber: 0, sugar: 3.2, sodium: 78 },
-  { name: 'Mozzarella fior di latte', brand: '', kcal: 253, protein: 18, carbs: 0.7, fat: 20, fiber: 0, sugar: 0.7, sodium: 500 },
-  { name: 'Mozzarella di bufala', brand: '', kcal: 288, protein: 17, carbs: 0.8, fat: 24, fiber: 0, sugar: 0.8, sodium: 450 },
-  { name: 'Parmigiano Reggiano', brand: '', kcal: 392, protein: 33, carbs: 0, fat: 28, fiber: 0, sugar: 0, sodium: 1600 },
-  { name: 'Grana Padano', brand: '', kcal: 384, protein: 33, carbs: 0, fat: 28, fiber: 0, sugar: 0, sodium: 1600 },
-  { name: 'Pecorino Romano', brand: '', kcal: 387, protein: 26, carbs: 0, fat: 31, fiber: 0, sugar: 0, sodium: 1900 },
-  { name: 'Provolone', brand: '', kcal: 352, protein: 26, carbs: 2, fat: 27, fiber: 0, sugar: 2, sodium: 750 },
-  { name: 'Gorgonzola', brand: '', kcal: 330, protein: 19, carbs: 0.5, fat: 28, fiber: 0, sugar: 0.5, sodium: 1400 },
-  { name: 'Mascarpone', brand: '', kcal: 455, protein: 5, carbs: 4, fat: 47, fiber: 0, sugar: 4, sodium: 30 },
-  { name: 'Burro', brand: '', kcal: 758, protein: 0.9, carbs: 0.6, fat: 83, fiber: 0, sugar: 0.6, sodium: 11 },
-  { name: 'Panna fresca', brand: '', kcal: 345, protein: 2.3, carbs: 3, fat: 36, fiber: 0, sugar: 3, sodium: 32 },
-  { name: 'Philadelphia classico', brand: 'Philadelphia', kcal: 252, protein: 5.6, carbs: 4.1, fat: 24, fiber: 0, sugar: 4.1, sodium: 700 },
+  { name: 'Latte parzialmente scremato', brand: '', kcal: 46, protein: 3.3, carbs: 5.0, fat: 1.5, fiber: 0, sugar: 5.0, sodium: 50 },
+  { name: 'Latte scremato', brand: '', kcal: 36, protein: 3.4, carbs: 5.3, fat: 0.2, fiber: 0, sugar: 5.3, sodium: 52 },
+  { name: 'Latte di soia', brand: '', kcal: 32, protein: 3.0, carbs: 0.4, fat: 1.9, fiber: 0.5, sugar: 0.0, sodium: 35 },
+  { name: 'Latte di mandorla (non zuccherato)', brand: '', kcal: 17, protein: 0.5, carbs: 0.3, fat: 1.4, fiber: 0.3, sugar: 0.0, sodium: 60 },
+  { name: 'Latte di avena', brand: '', kcal: 47, protein: 1.0, carbs: 7.0, fat: 1.5, fiber: 0.8, sugar: 4.0, sodium: 80 },
+  { name: 'Latte di cocco', brand: '', kcal: 188, protein: 1.7, carbs: 2.7, fat: 19.0, fiber: 0.0, sugar: 2.5, sodium: 8 },
+  { name: 'Yogurt intero bianco', brand: '', kcal: 66, protein: 3.8, carbs: 4.3, fat: 3.9, fiber: 0, sugar: 4.3, sodium: 47 },
+  { name: 'Yogurt magro bianco', brand: '', kcal: 36, protein: 4.2, carbs: 4.3, fat: 0.1, fiber: 0, sugar: 4.3, sodium: 51 },
+  { name: 'Yogurt greco intero', brand: '', kcal: 96, protein: 6.0, carbs: 4.0, fat: 5.0, fiber: 0, sugar: 4.0, sodium: 36 },
+  { name: 'Yogurt greco 0% magro', brand: '', kcal: 57, protein: 10.0, carbs: 4.0, fat: 0.4, fiber: 0, sugar: 4.0, sodium: 40 },
+  { name: 'Skyr (yogurt islandese)', brand: '', kcal: 60, protein: 11.0, carbs: 4.0, fat: 0.2, fiber: 0, sugar: 4.0, sodium: 40 },
+  { name: 'Kefir', brand: '', kcal: 51, protein: 3.4, carbs: 4.0, fat: 2.5, fiber: 0, sugar: 4.0, sodium: 40 },
+  { name: 'Panna fresca da cucina', brand: '', kcal: 337, protein: 2.3, carbs: 3.4, fat: 35.0, fiber: 0, sugar: 3.4, sodium: 38 },
+  { name: 'Panna acida', brand: '', kcal: 198, protein: 2.4, carbs: 3.5, fat: 19.7, fiber: 0, sugar: 3.5, sodium: 40 },
+  { name: 'Burro', brand: '', kcal: 758, protein: 0.8, carbs: 1.1, fat: 83.4, fiber: 0, sugar: 1.1, sodium: 11 },
+  { name: 'Ricotta vaccina', brand: '', kcal: 146, protein: 8.8, carbs: 3.5, fat: 11.0, fiber: 0, sugar: 3.5, sodium: 78 },
+  { name: 'Ricotta di pecora', brand: '', kcal: 157, protein: 9.5, carbs: 4.0, fat: 12.0, fiber: 0, sugar: 4.0, sodium: 100 },
+  { name: 'Mozzarella vaccina', brand: '', kcal: 253, protein: 18.7, carbs: 0.7, fat: 19.5, fiber: 0, sugar: 0.7, sodium: 420 },
+  { name: 'Mozzarella di bufala', brand: '', kcal: 288, protein: 16.7, carbs: 0.4, fat: 24.4, fiber: 0, sugar: 0.4, sodium: 200 },
+  { name: 'Stracchino', brand: '', kcal: 300, protein: 18.0, carbs: 0.5, fat: 25.0, fiber: 0, sugar: 0.5, sodium: 700 },
+  { name: 'Crescenza', brand: '', kcal: 281, protein: 16.7, carbs: 1.0, fat: 23.3, fiber: 0, sugar: 1.0, sodium: 692 },
+  { name: 'Robiola', brand: '', kcal: 313, protein: 19.0, carbs: 1.0, fat: 26.0, fiber: 0, sugar: 1.0, sodium: 600 },
+  { name: 'Philadelphia (formaggio fresco spalmabile)', brand: '', kcal: 245, protein: 5.7, carbs: 4.1, fat: 23.0, fiber: 0, sugar: 4.1, sodium: 700 },
+  { name: 'Parmigiano Reggiano', brand: '', kcal: 392, protein: 33.0, carbs: 0.0, fat: 28.4, fiber: 0, sugar: 0, sodium: 600 },
+  { name: 'Grana Padano', brand: '', kcal: 384, protein: 33.0, carbs: 0.0, fat: 28.0, fiber: 0, sugar: 0, sodium: 700 },
+  { name: 'Pecorino romano', brand: '', kcal: 392, protein: 26.0, carbs: 1.7, fat: 32.0, fiber: 0, sugar: 1.7, sodium: 1500 },
+  { name: 'Provolone dolce', brand: '', kcal: 351, protein: 25.6, carbs: 2.1, fat: 26.6, fiber: 0, sugar: 2.1, sodium: 876 },
+  { name: 'Asiago', brand: '', kcal: 392, protein: 24.0, carbs: 1.0, fat: 32.0, fiber: 0, sugar: 1.0, sodium: 590 },
+  { name: 'Fontina', brand: '', kcal: 343, protein: 24.5, carbs: 1.6, fat: 26.9, fiber: 0, sugar: 1.6, sodium: 800 },
+  { name: 'Taleggio', brand: '', kcal: 315, protein: 19.0, carbs: 0.9, fat: 26.0, fiber: 0, sugar: 0.9, sodium: 870 },
+  { name: 'Gorgonzola', brand: '', kcal: 325, protein: 18.7, carbs: 0.7, fat: 27.2, fiber: 0, sugar: 0.7, sodium: 1390 },
+  { name: 'Caciotta', brand: '', kcal: 358, protein: 22.5, carbs: 1.0, fat: 28.5, fiber: 0, sugar: 1.0, sodium: 700 },
+  { name: 'Caciocavallo', brand: '', kcal: 439, protein: 32.0, carbs: 0.0, fat: 35.0, fiber: 0, sugar: 0, sodium: 800 },
+  { name: 'Scamorza', brand: '', kcal: 334, protein: 25.0, carbs: 1.0, fat: 25.0, fiber: 0, sugar: 1.0, sodium: 600 },
+  { name: 'Emmental', brand: '', kcal: 403, protein: 28.5, carbs: 0.7, fat: 31.5, fiber: 0, sugar: 0.7, sodium: 450 },
+  { name: 'Edam', brand: '', kcal: 357, protein: 25.0, carbs: 1.4, fat: 28.0, fiber: 0, sugar: 1.4, sodium: 700 },
+  { name: 'Brie', brand: '', kcal: 334, protein: 20.8, carbs: 0.5, fat: 28.0, fiber: 0, sugar: 0.5, sodium: 629 },
 
-  // Cereali, pasta, pane
-  { name: 'Pasta di semola cruda', brand: '', kcal: 353, protein: 11, carbs: 72, fat: 1.4, fiber: 3, sugar: 3.5, sodium: 4 },
-  { name: 'Pasta di semola cotta', brand: '', kcal: 158, protein: 5.8, carbs: 31, fat: 0.9, fiber: 1.8, sugar: 0.6, sodium: 3 },
-  { name: 'Pasta integrale cruda', brand: '', kcal: 335, protein: 13, carbs: 66, fat: 2.5, fiber: 11, sugar: 3.3, sodium: 8 },
-  { name: 'Pasta all\'uovo cruda', brand: '', kcal: 366, protein: 13, carbs: 71, fat: 2.8, fiber: 2.9, sugar: 2.2, sodium: 77 },
-  { name: 'Riso bianco crudo', brand: '', kcal: 358, protein: 6.7, carbs: 80, fat: 0.6, fiber: 1, sugar: 0.1, sodium: 5 },
-  { name: 'Riso bianco cotto', brand: '', kcal: 130, protein: 2.7, carbs: 28, fat: 0.3, fiber: 0.4, sugar: 0.1, sodium: 1 },
-  { name: 'Riso integrale crudo', brand: '', kcal: 337, protein: 7.5, carbs: 75, fat: 1.9, fiber: 1.9, sugar: 1.2, sodium: 9 },
-  { name: 'Riso basmati crudo', brand: '', kcal: 350, protein: 8, carbs: 76, fat: 0.8, fiber: 1.5, sugar: 0.1, sodium: 1 },
-  { name: 'Pane bianco', brand: '', kcal: 265, protein: 8.9, carbs: 49, fat: 3.2, fiber: 2.7, sugar: 5, sodium: 490 },
-  { name: 'Pane integrale', brand: '', kcal: 247, protein: 13, carbs: 41, fat: 3.4, fiber: 7, sugar: 4, sodium: 400 },
-  { name: 'Pane di segale', brand: '', kcal: 259, protein: 8.5, carbs: 48, fat: 3.3, fiber: 5.8, sugar: 3.9, sodium: 603 },
-  { name: 'Fette biscottate', brand: '', kcal: 396, protein: 12, carbs: 73, fat: 6, fiber: 4, sugar: 6, sodium: 560 },
-  { name: 'Farina 00', brand: '', kcal: 341, protein: 10, carbs: 77, fat: 1, fiber: 2.2, sugar: 1.5, sodium: 2 },
-  { name: 'Farina integrale', brand: '', kcal: 329, protein: 12, carbs: 67, fat: 1.9, fiber: 11, sugar: 2.6, sodium: 2 },
-  { name: 'Farro perlato', brand: '', kcal: 335, protein: 15, carbs: 70, fat: 2.5, fiber: 6.8, sugar: 6.8, sodium: 4 },
-  { name: 'Orzo perlato', brand: '', kcal: 319, protein: 10, carbs: 71, fat: 1.4, fiber: 9.2, sugar: 0.8, sodium: 3 },
-  { name: 'Avena in fiocchi', brand: '', kcal: 389, protein: 17, carbs: 66, fat: 7, fiber: 10, sugar: 1, sodium: 2 },
-  { name: 'Cous cous crudo', brand: '', kcal: 376, protein: 13, carbs: 77, fat: 0.6, fiber: 5, sugar: 0.6, sodium: 10 },
-  { name: 'Polenta cotta', brand: '', kcal: 85, protein: 1.9, carbs: 18, fat: 0.5, fiber: 0.7, sugar: 0.2, sodium: 240 },
-  { name: 'Pizza margherita', brand: '', kcal: 271, protein: 11, carbs: 33, fat: 10, fiber: 2.3, sugar: 3.6, sodium: 620 },
-  { name: 'Gnocchi di patate', brand: '', kcal: 160, protein: 3.4, carbs: 33, fat: 1.3, fiber: 1.2, sugar: 1, sodium: 410 },
+  // ═══ FRUTTA SECCA E SEMI ══════════════════════════════════════════
+  { name: 'Mandorle', brand: '', kcal: 603, protein: 22.0, carbs: 4.6, fat: 55.3, fiber: 12.7, sugar: 4.6, sodium: 14 },
+  { name: 'Noci', brand: '', kcal: 689, protein: 14.3, carbs: 5.1, fat: 68.1, fiber: 6.2, sugar: 2.6, sodium: 5 },
+  { name: 'Nocciole', brand: '', kcal: 655, protein: 13.8, carbs: 6.1, fat: 64.1, fiber: 8.1, sugar: 4.3, sodium: 0 },
+  { name: 'Pistacchi', brand: '', kcal: 608, protein: 18.1, carbs: 8.1, fat: 56.1, fiber: 10.6, sugar: 7.7, sodium: 5 },
+  { name: 'Anacardi', brand: '', kcal: 598, protein: 15.0, carbs: 28.7, fat: 46.0, fiber: 3.0, sugar: 5.9, sodium: 12 },
+  { name: 'Arachidi', brand: '', kcal: 598, protein: 29.0, carbs: 8.5, fat: 50.0, fiber: 10.9, sugar: 4.7, sodium: 18 },
+  { name: 'Pinoli', brand: '', kcal: 595, protein: 31.9, carbs: 4.0, fat: 50.3, fiber: 4.5, sugar: 3.6, sodium: 4 },
+  { name: 'Castagne fresche', brand: '', kcal: 165, protein: 2.4, carbs: 36.7, fat: 1.7, fiber: 4.7, sugar: 8.6, sodium: 9 },
+  { name: 'Semi di girasole', brand: '', kcal: 584, protein: 24.0, carbs: 6.6, fat: 51.0, fiber: 4.3, sugar: 2.6, sodium: 9 },
+  { name: 'Semi di zucca', brand: '', kcal: 559, protein: 30.2, carbs: 4.7, fat: 49.1, fiber: 6.0, sugar: 1.4, sodium: 7 },
+  { name: 'Semi di chia', brand: '', kcal: 486, protein: 16.5, carbs: 7.7, fat: 30.7, fiber: 34.4, sugar: 0.0, sodium: 16 },
+  { name: 'Semi di lino', brand: '', kcal: 534, protein: 18.3, carbs: 1.6, fat: 42.2, fiber: 27.3, sugar: 1.5, sodium: 30 },
+  { name: 'Semi di sesamo', brand: '', kcal: 595, protein: 18.0, carbs: 11.7, fat: 51.3, fiber: 11.8, sugar: 0.3, sodium: 11 },
 
-  // Legumi
-  { name: 'Fagioli borlotti cotti', brand: '', kcal: 134, protein: 9.7, carbs: 23, fat: 0.6, fiber: 8.3, sugar: 0.3, sodium: 2 },
-  { name: 'Fagioli cannellini cotti', brand: '', kcal: 114, protein: 8.2, carbs: 20, fat: 0.5, fiber: 7.4, sugar: 0.3, sodium: 5 },
-  { name: 'Lenticchie cotte', brand: '', kcal: 116, protein: 9, carbs: 20, fat: 0.4, fiber: 7.9, sugar: 1.8, sodium: 2 },
-  { name: 'Ceci cotti', brand: '', kcal: 164, protein: 8.9, carbs: 27, fat: 2.6, fiber: 7.6, sugar: 4.8, sodium: 7 },
-  { name: 'Piselli cotti', brand: '', kcal: 84, protein: 5.4, carbs: 16, fat: 0.2, fiber: 5.5, sugar: 5.7, sodium: 5 },
-  { name: 'Fave fresche', brand: '', kcal: 88, protein: 7.6, carbs: 14, fat: 0.7, fiber: 5.4, sugar: 2, sodium: 25 },
-  { name: 'Soia cotta', brand: '', kcal: 173, protein: 17, carbs: 10, fat: 9, fiber: 6, sugar: 3, sodium: 1 },
-  { name: 'Tofu', brand: '', kcal: 76, protein: 8, carbs: 1.9, fat: 4.8, fiber: 0.3, sugar: 0.6, sodium: 7 },
-  { name: 'Hummus', brand: '', kcal: 166, protein: 7.9, carbs: 14, fat: 9.6, fiber: 6, sugar: 0.3, sodium: 380 },
+  // ═══ OLI E GRASSI ═════════════════════════════════════════════════
+  { name: 'Olio extravergine d\'oliva', brand: '', kcal: 884, protein: 0.0, carbs: 0.0, fat: 99.9, fiber: 0, sugar: 0, sodium: 0 },
+  { name: 'Olio di semi di girasole', brand: '', kcal: 899, protein: 0.0, carbs: 0.0, fat: 99.9, fiber: 0, sugar: 0, sodium: 0 },
+  { name: 'Olio di semi di mais', brand: '', kcal: 900, protein: 0.0, carbs: 0.0, fat: 100.0, fiber: 0, sugar: 0, sodium: 0 },
+  { name: 'Olio di cocco', brand: '', kcal: 862, protein: 0.0, carbs: 0.0, fat: 100.0, fiber: 0, sugar: 0, sodium: 0 },
+  { name: 'Olio di lino', brand: '', kcal: 884, protein: 0.0, carbs: 0.0, fat: 99.9, fiber: 0, sugar: 0, sodium: 0 },
+  { name: 'Margarina', brand: '', kcal: 759, protein: 0.6, carbs: 0.4, fat: 84.0, fiber: 0, sugar: 0, sodium: 800 },
+  { name: 'Strutto', brand: '', kcal: 891, protein: 0.0, carbs: 0.0, fat: 99.0, fiber: 0, sugar: 0, sodium: 0 },
 
-  // Oli, grassi, condimenti
-  { name: 'Olio extravergine d\'oliva', brand: '', kcal: 884, protein: 0, carbs: 0, fat: 100, fiber: 0, sugar: 0, sodium: 2 },
-  { name: 'Olio di semi di girasole', brand: '', kcal: 884, protein: 0, carbs: 0, fat: 100, fiber: 0, sugar: 0, sodium: 0 },
-  { name: 'Aceto balsamico', brand: '', kcal: 88, protein: 0.5, carbs: 17, fat: 0, fiber: 0, sugar: 15, sodium: 23 },
+  // ═══ DOLCI, ZUCCHERO, MIELE ══════════════════════════════════════
+  { name: 'Zucchero bianco', brand: '', kcal: 392, protein: 0.0, carbs: 100.0, fat: 0.0, fiber: 0, sugar: 100.0, sodium: 0 },
+  { name: 'Zucchero di canna', brand: '', kcal: 380, protein: 0.0, carbs: 99.0, fat: 0.0, fiber: 0, sugar: 99.0, sodium: 5 },
+  { name: 'Miele', brand: '', kcal: 304, protein: 0.4, carbs: 80.3, fat: 0.0, fiber: 0.2, sugar: 80.3, sodium: 4 },
+  { name: 'Marmellata di frutta', brand: '', kcal: 222, protein: 0.4, carbs: 60.0, fat: 0.0, fiber: 1.5, sugar: 56.0, sodium: 12 },
+  { name: 'Cioccolato fondente 70%', brand: '', kcal: 545, protein: 7.7, carbs: 33.0, fat: 42.0, fiber: 11.0, sugar: 24.0, sodium: 20 },
+  { name: 'Cioccolato fondente 85%', brand: '', kcal: 600, protein: 9.5, carbs: 19.0, fat: 51.0, fiber: 14.0, sugar: 14.0, sodium: 12 },
+  { name: 'Cioccolato al latte', brand: '', kcal: 545, protein: 7.7, carbs: 56.9, fat: 31.3, fiber: 2.0, sugar: 51.3, sodium: 80 },
+  { name: 'Cioccolato bianco', brand: '', kcal: 540, protein: 8.0, carbs: 58.0, fat: 30.9, fiber: 0, sugar: 58.0, sodium: 90 },
+  { name: 'Crema di nocciole spalmabile', brand: '', kcal: 539, protein: 6.3, carbs: 57.5, fat: 30.9, fiber: 4.0, sugar: 56.3, sodium: 41 },
+  { name: 'Cacao amaro in polvere', brand: '', kcal: 350, protein: 19.6, carbs: 11.5, fat: 23.7, fiber: 33.2, sugar: 0.9, sodium: 6 },
 
-  // Dolci e zuccheri
-  { name: 'Zucchero bianco', brand: '', kcal: 387, protein: 0, carbs: 100, fat: 0, fiber: 0, sugar: 100, sodium: 1 },
-  { name: 'Zucchero di canna', brand: '', kcal: 380, protein: 0, carbs: 98, fat: 0, fiber: 0, sugar: 97, sodium: 39 },
-  { name: 'Miele', brand: '', kcal: 304, protein: 0.3, carbs: 82, fat: 0, fiber: 0.2, sugar: 82, sodium: 4 },
-  { name: 'Marmellata di frutta', brand: '', kcal: 250, protein: 0.4, carbs: 61, fat: 0.1, fiber: 0.8, sugar: 54, sodium: 24 },
-  { name: 'Cioccolato fondente 70%', brand: '', kcal: 598, protein: 7.8, carbs: 46, fat: 43, fiber: 11, sugar: 24, sodium: 20 },
-  { name: 'Cioccolato al latte', brand: '', kcal: 535, protein: 7.7, carbs: 59, fat: 30, fiber: 3.4, sugar: 52, sodium: 79 },
-  { name: 'Cioccolato bianco', brand: '', kcal: 539, protein: 5.9, carbs: 59, fat: 32, fiber: 0, sugar: 59, sodium: 90 },
-  { name: 'Nutella', brand: 'Ferrero', kcal: 539, protein: 6.3, carbs: 57, fat: 31, fiber: 0, sugar: 56, sodium: 43 },
-  { name: 'Biscotti frollini', brand: '', kcal: 459, protein: 6.5, carbs: 70, fat: 17, fiber: 2, sugar: 23, sodium: 280 },
-  { name: 'Pan di Stelle', brand: 'Mulino Bianco', kcal: 479, protein: 7.2, carbs: 67, fat: 19, fiber: 3.3, sugar: 28, sodium: 330 },
-  { name: 'Pan Bauletto', brand: 'Mulino Bianco', kcal: 277, protein: 9.2, carbs: 50, fat: 3.9, fiber: 2.8, sugar: 5.2, sodium: 550 },
-  { name: 'Gocciole', brand: 'Pavesi', kcal: 495, protein: 6.5, carbs: 64, fat: 23, fiber: 2.7, sugar: 29, sodium: 290 },
-  { name: 'Oro Saiwa', brand: 'Saiwa', kcal: 431, protein: 9, carbs: 73, fat: 11, fiber: 2.7, sugar: 20, sodium: 400 },
-  { name: 'Plasmon biscotti', brand: 'Plasmon', kcal: 410, protein: 9.5, carbs: 77, fat: 6.8, fiber: 2, sugar: 23, sodium: 170 },
-  { name: 'Torta margherita', brand: '', kcal: 385, protein: 6, carbs: 55, fat: 15, fiber: 1, sugar: 28, sodium: 200 },
-  { name: 'Crostata alla marmellata', brand: '', kcal: 395, protein: 5.4, carbs: 62, fat: 14, fiber: 1.8, sugar: 30, sodium: 190 },
-  { name: 'Gelato alla crema', brand: '', kcal: 207, protein: 3.5, carbs: 24, fat: 11, fiber: 0, sugar: 21, sodium: 80 },
-  { name: 'Gelato al cioccolato', brand: '', kcal: 216, protein: 3.8, carbs: 28, fat: 11, fiber: 1.2, sugar: 25, sodium: 76 },
+  // ═══ BEVANDE ══════════════════════════════════════════════════════
+  { name: 'Acqua', brand: '', kcal: 0, protein: 0.0, carbs: 0.0, fat: 0.0, fiber: 0, sugar: 0, sodium: 5 },
+  { name: 'Caffè (espresso)', brand: '', kcal: 1, protein: 0.1, carbs: 0.0, fat: 0.0, fiber: 0, sugar: 0, sodium: 1 },
+  { name: 'Tè verde non zuccherato', brand: '', kcal: 1, protein: 0.0, carbs: 0.0, fat: 0.0, fiber: 0, sugar: 0, sodium: 1 },
+  { name: 'Tè nero non zuccherato', brand: '', kcal: 1, protein: 0.0, carbs: 0.3, fat: 0.0, fiber: 0, sugar: 0, sodium: 3 },
+  { name: 'Spremuta d\'arancia', brand: '', kcal: 33, protein: 0.5, carbs: 8.4, fat: 0.0, fiber: 0.1, sugar: 8.1, sodium: 2 },
+  { name: 'Vino rosso', brand: '', kcal: 85, protein: 0.1, carbs: 2.6, fat: 0.0, fiber: 0, sugar: 0.6, sodium: 4 },
+  { name: 'Vino bianco', brand: '', kcal: 82, protein: 0.1, carbs: 2.6, fat: 0.0, fiber: 0, sugar: 1.0, sodium: 5 },
+  { name: 'Birra chiara', brand: '', kcal: 43, protein: 0.5, carbs: 3.6, fat: 0.0, fiber: 0, sugar: 0, sodium: 4 },
+  { name: 'Coca-Cola', brand: '', kcal: 42, protein: 0.0, carbs: 10.6, fat: 0.0, fiber: 0, sugar: 10.6, sodium: 6 },
+  { name: 'Coca-Cola Zero', brand: '', kcal: 0.3, protein: 0.0, carbs: 0.0, fat: 0.0, fiber: 0, sugar: 0, sodium: 8 },
 
-  // Frutta secca
-  { name: 'Mandorle', brand: '', kcal: 579, protein: 21, carbs: 22, fat: 50, fiber: 12, sugar: 4.4, sodium: 1 },
-  { name: 'Noci', brand: '', kcal: 654, protein: 15, carbs: 14, fat: 65, fiber: 6.7, sugar: 2.6, sodium: 2 },
-  { name: 'Nocciole', brand: '', kcal: 628, protein: 15, carbs: 17, fat: 61, fiber: 9.7, sugar: 4.3, sodium: 0 },
-  { name: 'Pistacchi', brand: '', kcal: 560, protein: 20, carbs: 28, fat: 45, fiber: 10, sugar: 7.7, sodium: 1 },
-  { name: 'Arachidi', brand: '', kcal: 567, protein: 26, carbs: 16, fat: 49, fiber: 8.5, sugar: 4, sodium: 18 },
-  { name: 'Pinoli', brand: '', kcal: 673, protein: 14, carbs: 13, fat: 68, fiber: 3.7, sugar: 3.6, sodium: 2 },
+  // ═══ SUGHI E CONDIMENTI BASE ═════════════════════════════════════
+  { name: 'Passata di pomodoro', brand: '', kcal: 32, protein: 1.6, carbs: 6.0, fat: 0.2, fiber: 1.4, sugar: 5.0, sodium: 14 },
+  { name: 'Polpa di pomodoro', brand: '', kcal: 30, protein: 1.5, carbs: 5.5, fat: 0.2, fiber: 1.5, sugar: 4.8, sodium: 10 },
+  { name: 'Pomodori pelati', brand: '', kcal: 24, protein: 1.2, carbs: 4.5, fat: 0.2, fiber: 1.3, sugar: 3.8, sodium: 6 },
+  { name: 'Concentrato di pomodoro', brand: '', kcal: 95, protein: 4.4, carbs: 19.0, fat: 0.5, fiber: 5.0, sugar: 13.0, sodium: 20 },
+  { name: 'Pesto alla genovese', brand: '', kcal: 535, protein: 6.0, carbs: 4.0, fat: 54.0, fiber: 1.5, sugar: 1.0, sodium: 800 },
+  { name: 'Aceto di vino', brand: '', kcal: 19, protein: 0.4, carbs: 0.6, fat: 0.0, fiber: 0, sugar: 0.4, sodium: 7 },
+  { name: 'Aceto balsamico', brand: '', kcal: 88, protein: 0.5, carbs: 17.0, fat: 0.0, fiber: 0, sugar: 15.0, sodium: 23 },
+  { name: 'Senape', brand: '', kcal: 66, protein: 4.4, carbs: 5.3, fat: 4.0, fiber: 3.3, sugar: 0.9, sodium: 1135 },
+  { name: 'Maionese', brand: '', kcal: 680, protein: 1.0, carbs: 1.5, fat: 75.0, fiber: 0, sugar: 1.5, sodium: 600 },
+  { name: 'Ketchup', brand: '', kcal: 112, protein: 1.7, carbs: 24.0, fat: 0.2, fiber: 0.4, sugar: 22.8, sodium: 1110 },
+  { name: 'Salsa di soia', brand: '', kcal: 53, protein: 8.0, carbs: 4.9, fat: 0.6, fiber: 0.8, sugar: 0.4, sodium: 5493 },
+  { name: 'Sale fino', brand: '', kcal: 0, protein: 0.0, carbs: 0.0, fat: 0.0, fiber: 0, sugar: 0, sodium: 38758 },
 
-  // Snack
-  { name: 'Patatine fritte', brand: '', kcal: 536, protein: 6.6, carbs: 53, fat: 34, fiber: 4.8, sugar: 0.6, sodium: 525 },
-  { name: 'Crackers salati', brand: '', kcal: 425, protein: 10, carbs: 68, fat: 12, fiber: 3.3, sugar: 2.4, sodium: 980 },
-  { name: 'Grissini', brand: '', kcal: 431, protein: 12, carbs: 73, fat: 10, fiber: 3.3, sugar: 2.8, sodium: 710 },
-  { name: 'Popcorn', brand: '', kcal: 387, protein: 12, carbs: 78, fat: 4.5, fiber: 15, sugar: 0.9, sodium: 8 },
-
-  // Bevande
-  { name: 'Acqua', brand: '', kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 1 },
-  { name: 'Caffè espresso', brand: '', kcal: 2, protein: 0.1, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 1 },
-  { name: 'Cappuccino', brand: '', kcal: 37, protein: 1.9, carbs: 2.9, fat: 2.1, fiber: 0, sugar: 2.9, sodium: 30 },
-  { name: 'Tè', brand: '', kcal: 1, protein: 0, carbs: 0.3, fat: 0, fiber: 0, sugar: 0, sodium: 3 },
-  { name: 'Succo d\'arancia', brand: '', kcal: 45, protein: 0.7, carbs: 10, fat: 0.2, fiber: 0.2, sugar: 8.4, sodium: 1 },
-  { name: 'Coca Cola', brand: 'Coca-Cola', kcal: 42, protein: 0, carbs: 11, fat: 0, fiber: 0, sugar: 11, sodium: 4 },
-  { name: 'Coca Cola Zero', brand: 'Coca-Cola', kcal: 0.3, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 6 },
-  { name: 'Aranciata', brand: '', kcal: 40, protein: 0, carbs: 10, fat: 0, fiber: 0, sugar: 10, sodium: 7 },
-  { name: 'Vino rosso', brand: '', kcal: 85, protein: 0.1, carbs: 2.6, fat: 0, fiber: 0, sugar: 0.6, sodium: 4 },
-  { name: 'Vino bianco', brand: '', kcal: 82, protein: 0.1, carbs: 2.6, fat: 0, fiber: 0, sugar: 1, sodium: 5 },
-  { name: 'Birra chiara', brand: '', kcal: 43, protein: 0.5, carbs: 3.6, fat: 0, fiber: 0, sugar: 0, sodium: 4 },
+  // ═══ PROTEINE ALTERNATIVE ════════════════════════════════════════
+  { name: 'Tofu naturale', brand: '', kcal: 76, protein: 8.1, carbs: 1.9, fat: 4.8, fiber: 0.3, sugar: 0.6, sodium: 7 },
+  { name: 'Tempeh', brand: '', kcal: 192, protein: 20.3, carbs: 7.6, fat: 10.8, fiber: 4.0, sugar: 0.0, sodium: 9 },
+  { name: 'Seitan', brand: '', kcal: 121, protein: 25.0, carbs: 4.0, fat: 0.5, fiber: 0.6, sugar: 0.0, sodium: 29 },
+  { name: 'Hummus', brand: '', kcal: 166, protein: 7.9, carbs: 14.3, fat: 9.6, fiber: 6.0, sugar: 0.3, sodium: 379 },
 ];
 
 function stripAccents(s) {
@@ -2280,6 +2428,12 @@ async function boot() {
     state.screen = 'login';
   }
   render();
+  // Auto-pulizia silenziosa dei dati di diario >14 giorni in background
+  if (state.user && state.user.userId) {
+    setTimeout(() => {
+      pruneOldDiaryEntries().catch(e => dlog('PRUNE auto FAIL: ' + e.message));
+    }, 2000);
+  }
 }
 
 async function loadAll() {
@@ -2523,10 +2677,11 @@ function renderTabbar() {
 function renderToday() {
   const t = computeTotals();
   const g = getGoalsForDate(state.date);
-  const pct = clamp(t.kcal / g.calories, 0, 1.2);
+  const goalsConfigured = g.calories > 0;
+  const pct = goalsConfigured ? clamp(t.kcal / g.calories, 0, 1.2) : 0;
   const R = 84, C = 2 * Math.PI * R;
   const off = C * (1 - Math.min(pct, 1));
-  const remaining = Math.max(0, g.calories - t.kcal);
+  const remaining = goalsConfigured ? Math.max(0, g.calories - t.kcal) : 0;
   const pDate = prettyDate(state.date);
 
   const bar = (lbl, val, goal, cls) => {
@@ -2849,12 +3004,21 @@ function renderScan() {
       </div>`;
   }
   if (state.scanState === 'error') {
+    const recentLogs = (typeof _debugLog !== 'undefined' ? _debugLog.slice(-6).reverse() : []);
     return `<div style="padding:0 var(--pad-lg)">
       <div class="card-flat" style="text-align:center">
         <div style="color:var(--danger);font-size:14px;margin-bottom:8px">Errore scanner</div>
         <div style="font-size:13px;color:var(--text-2);margin-bottom:16px">${esc(state.scanError || 'Impossibile avviare la fotocamera')}</div>
         <button class="btn btn-primary" id="to-manual">Inserisci codice manualmente</button>
         <button class="btn btn-secondary" id="retry-cam" style="margin-top:8px">Riprova</button>
+        ${recentLogs.length ? `
+        <details style="margin-top:14px;text-align:left">
+          <summary style="cursor:pointer;font-size:11px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;font-weight:600;padding:8px 0">Diagnostica</summary>
+          <div style="background:var(--surface-2);border-radius:8px;padding:8px;font-family:ui-monospace,monospace;font-size:10px;color:var(--text-2);max-height:160px;overflow-y:auto">
+            ${recentLogs.map(l => `<div style="padding:1px 0;word-break:break-all">${esc(l)}</div>`).join('')}
+          </div>
+        </details>
+        ` : ''}
       </div>
     </div>`;
   }
@@ -2873,28 +3037,40 @@ function renderScan() {
 }
 
 /* ─── ZXING SCANNER ───────────────────────────────────────
-   Carica @zxing/browser dinamicamente da CDN (jsDelivr).
-   ~150 KB scaricati al primo uso, poi cached dal browser.
-   Funziona su Safari iOS dove BarcodeDetector è rotto/assente.
+   Carica ZXing come script UMD dal CDN (iOS PWA non gestisce
+   bene import() da CDN — script tag è universale).
    ──────────────────────────────────────────────────────── */
-const ZXING_CDN = 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm';
+const ZXING_CDN = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
 let _zxingPromise = null;
-async function loadZxing() {
-  if (window._zxing) return window._zxing;
-  if (!_zxingPromise) {
-    _zxingPromise = (async () => {
-      try {
-        const mod = await import(ZXING_CDN);
-        // mod expose BrowserMultiFormatReader e enums utili
-        window._zxing = mod;
-        dlog('ZXing loaded');
-        return mod;
-      } catch (e) {
-        _zxingPromise = null;
-        throw new Error('Caricamento scanner fallito: ' + e.message);
-      }
-    })();
+function loadZxing() {
+  if (window.ZXing || (window.ZXingBrowser && window.ZXingBrowser.BrowserMultiFormatReader)) {
+    return Promise.resolve(window.ZXingBrowser || window.ZXing);
   }
+  if (_zxingPromise) return _zxingPromise;
+  _zxingPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = ZXING_CDN;
+    script.async = true;
+    const timer = setTimeout(() => {
+      reject(new Error('Timeout caricamento ZXing (20s) — controlla la connessione'));
+    }, 20000);
+    script.onload = () => {
+      clearTimeout(timer);
+      // ZXing UMD esporta su window.ZXing (con BrowserMultiFormatReader e BarcodeFormat)
+      if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
+        dlog('ZXing UMD loaded');
+        resolve(window.ZXing);
+      } else {
+        reject(new Error('ZXing caricato ma BrowserMultiFormatReader mancante'));
+      }
+    };
+    script.onerror = (e) => {
+      clearTimeout(timer);
+      _zxingPromise = null;
+      reject(new Error('Errore download ZXing dal CDN'));
+    };
+    document.head.appendChild(script);
+  });
   return _zxingPromise;
 }
 
@@ -2909,44 +3085,49 @@ async function startScanner() {
     zxing = await loadZxing();
   } catch (e) {
     state.scanError = e.message || 'Impossibile caricare lo scanner';
-    state.scanState = 'manual';
+    state.scanState = 'error';
     render();
     return;
   }
 
-  // Costruisci il reader con i formati barcode usati nel retail (EAN/UPC, code128, ecc)
+  // Costruisci hints per i formati barcode usati nel retail
   const hints = new Map();
-  // BarcodeFormat enum keys: usiamo direct via mod.BarcodeFormat
   const F = zxing.BarcodeFormat;
-  if (F) {
+  if (F && zxing.DecodeHintType) {
     const formats = [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.QR_CODE].filter(x => x !== undefined);
-    if (formats.length && zxing.DecodeHintType) {
+    if (formats.length) {
       hints.set(zxing.DecodeHintType.POSSIBLE_FORMATS, formats);
       hints.set(zxing.DecodeHintType.TRY_HARDER, true);
     }
   }
-  const reader = new zxing.BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 200 });
+  const reader = new zxing.BrowserMultiFormatReader(hints, 200);
   state.zxingReader = reader;
 
   const video = document.getElementById('scan-video');
   if (!video) { stopScanner(); return; }
 
   try {
-    // decodeFromVideoDevice apre la camera, attiva il loop interno e
-    // chiama il callback con ogni risultato/errore
-    state.zxingControls = await reader.decodeFromVideoDevice(
-      undefined, // deviceId: undefined → seleziona automaticamente la camera back
-      video,
-      (result, err, controls) => {
-        if (result) {
-          const code = result.getText();
-          dlog('ZXing decoded: ' + code);
-          stopScanner();
-          handleBarcodeResult(code);
-        }
-        // err = NotFoundException ad ogni frame senza match → ignora
+    // Lista delle camere disponibili
+    let deviceId = null;
+    try {
+      const devices = await reader.listVideoInputDevices();
+      if (devices && devices.length) {
+        // Preferisci back camera (cerca "back" o "rear" o "environment")
+        const back = devices.find(d => /back|rear|environment/i.test(d.label));
+        deviceId = (back || devices[devices.length - 1]).deviceId;
       }
-    );
+    } catch (_) {}
+
+    await reader.decodeFromVideoDevice(deviceId, video, (result, err, controls) => {
+      if (result) {
+        const code = result.getText();
+        dlog('ZXing decoded: ' + code);
+        stopScanner();
+        handleBarcodeResult(code);
+      }
+      // err per ogni frame senza match → ignora
+    });
+    state.zxingControls = reader; // reader stesso ha .reset() per fermare
     state.scanState = 'running';
     render();
   } catch (err) {
@@ -2965,11 +3146,6 @@ async function startScanner() {
 }
 
 function stopScanner() {
-  try {
-    if (state.zxingControls && typeof state.zxingControls.stop === 'function') {
-      state.zxingControls.stop();
-    }
-  } catch (_) {}
   try {
     if (state.zxingReader && typeof state.zxingReader.reset === 'function') {
       state.zxingReader.reset();
@@ -3520,13 +3696,6 @@ function renderGoalsSheet() {
     { k: '0', label: 'Dom' },
   ];
 
-  const presets = [
-    { label: 'Mantenimento', kcal: 2000, p: 150, c: 250, f: 65 },
-    { label: 'Deficit lieve', kcal: 1700, p: 140, c: 190, f: 55 },
-    { label: 'Surplus', kcal: 2500, p: 170, c: 310, f: 80 },
-    { label: 'Low-carb', kcal: 1900, p: 160, c: 120, f: 105 },
-  ];
-
   const subtext = isDefault
     ? 'Base: applicati a tutti i giorni, salvo override specifici.'
     : (hasOverride ? 'Override attivo per questo giorno.' : 'Questo giorno eredita dai valori Base. Modifica per creare un override.');
@@ -3542,15 +3711,11 @@ function renderGoalsSheet() {
       }).join('')}
     </div>
 
-    ${isDefault ? `
-      <div class="preset-grid">
-        ${presets.map((p, i) => `<button class="preset" data-preset="${i}"><div class="pn">${p.label}</div><div class="pk">${p.kcal} kcal</div></button>`).join('')}
-      </div>
-    ` : (hasOverride ? '' : `
+    ${!isDefault && !hasOverride ? `
       <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;font-size:12px;color:var(--text-2);line-height:1.5">
         <span style="flex:1">Questo giorno eredita i valori Base. Modifica i campi per creare un override.</span>
       </div>
-    `)}
+    ` : ''}
 
     <form id="goals-form">
       <div class="field">
@@ -3604,17 +3769,8 @@ function renderGoalsSheet() {
     };
   });
 
-  // Presets (solo su default)
+  // Form reference (presets rimossi: solo personalizzazione manuale)
   const form = document.getElementById('goals-form');
-  document.querySelectorAll('[data-preset]').forEach(btn => {
-    btn.onclick = () => {
-      const p = presets[+btn.dataset.preset];
-      form.calories.value = p.kcal;
-      form.protein.value = p.p;
-      form.carbs.value = p.c;
-      form.fat.value = p.f;
-    };
-  });
 
   // Reset override
   const resetBtn = document.getElementById('goals-reset-day');
@@ -3919,7 +4075,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.6.0';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -5407,7 +5563,19 @@ function bindApp() {
   // date nav
   document.querySelectorAll('[data-date]').forEach(b => {
     b.onclick = async () => {
-      state.date = shiftDate(state.date, b.dataset.date === 'next' ? 1 : -1);
+      const direction = b.dataset.date === 'next' ? 1 : -1;
+      const newDate = shiftDate(state.date, direction);
+      // Limita la navigazione indietro al periodo di retention dei dati
+      if (direction === -1) {
+        const todayMs = new Date(todayISO()).getTime();
+        const newMs = new Date(newDate).getTime();
+        const cutoffMs = todayMs - (DIARY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        if (newMs < cutoffMs) {
+          toast(`I dati oltre ${DIARY_RETENTION_DAYS} giorni vengono cancellati automaticamente`);
+          return;
+        }
+      }
+      state.date = newDate;
       await loadDiary(state.date);
       render();
     };
