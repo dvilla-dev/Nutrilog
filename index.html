@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.9.8 -->
+<!-- NUTRILOG_VERSION: 1.9.9 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -3599,30 +3599,77 @@ async function startScanner() {
     await video.play();
     dlog(`SCAN: step 6c - video size ${video.videoWidth}x${video.videoHeight}`);
 
-    // STEP 7 — Decode loop manuale con timeIntervalBetweenScans piccolo per affidabilità
-    // ZXing decodeFromVideoElementContinuously è più affidabile su iOS
-    dlog('SCAN: step 6d - avvio decode loop...');
+    // STEP 7 — Decode loop manuale: cattura frame video → canvas → decode
+    // Questo approccio è il più affidabile su iOS Safari perché bypassa
+    // i loop interni di ZXing che si bloccano in PWA standalone.
+    dlog('SCAN: step 6d - avvio decode loop (canvas-based)...');
     state.zxingDecodeActive = true;
+
+    // Canvas di lavoro per catturare frame del video
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    // Detect API ZXing disponibili (UMD v0.21.3 espone metodi diversi)
+    const hasDecodeCanvas = typeof reader.decodeFromCanvas === 'function';
+    const hasDecodeImage = typeof reader.decodeFromImageElement === 'function';
+    const hasDecodeImageData = typeof reader.decode === 'function';
+    dlog(`SCAN: API check - canvas:${hasDecodeCanvas} image:${hasDecodeImage} decode:${hasDecodeImageData}`);
+
+    const decodeFrame = (cv) => {
+      // Prova in ordine i metodi disponibili
+      if (hasDecodeCanvas) {
+        return reader.decodeFromCanvas(cv);
+      }
+      if (hasDecodeImage) {
+        // decodeFromImageElement richiede un <img>, creiamo uno temporaneo
+        const tmpImg = new Image();
+        tmpImg.src = cv.toDataURL('image/png');
+        return reader.decodeFromImageElement(tmpImg);
+      }
+      // Ultimo fallback: usa l'API base con BinaryBitmap
+      if (window.ZXing && window.ZXing.HTMLCanvasElementLuminanceSource && window.ZXing.HybridBinarizer && window.ZXing.BinaryBitmap) {
+        const luminanceSource = new window.ZXing.HTMLCanvasElementLuminanceSource(cv);
+        const binarizer = new window.ZXing.HybridBinarizer(luminanceSource);
+        const binaryBitmap = new window.ZXing.BinaryBitmap(binarizer);
+        return reader.decode(binaryBitmap);
+      }
+      throw new Error('Nessun metodo decode disponibile in ZXing');
+    };
 
     const decodeLoop = async () => {
       if (!state.zxingDecodeActive) return;
       try {
-        const result = await reader.decodeOnceFromVideoElement(video);
-        if (result && state.zxingDecodeActive) {
-          const code = result.getText();
-          dlog('SCAN: DECODED ' + code);
-          state.zxingDecodeActive = false;
-          stopScanner();
-          handleBarcodeResult(code);
-          return;
+        // Cattura frame solo se il video è effettivamente in riproduzione
+        if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          // Adegua dimensioni canvas al video (solo se cambiano)
+          if (canvas.width !== video.videoWidth) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          // Prova a decodificare dal canvas
+          try {
+            const result = decodeFrame(canvas);
+            if (result && state.zxingDecodeActive) {
+              const code = result.getText ? result.getText() : (result.text || String(result));
+              dlog('SCAN: DECODED ' + code);
+              state.zxingDecodeActive = false;
+              stopScanner();
+              handleBarcodeResult(code);
+              return;
+            }
+          } catch (err) {
+            // NotFoundException = nessun barcode visibile in questo frame, NORMALE
+            const errName = err && err.name || '';
+            if (errName !== 'NotFoundException' && errName !== 'NotFoundException2' && errName !== 'ChecksumException' && errName !== 'FormatException' && errName !== 'NotFoundException3') {
+              dlog('SCAN: decode err: ' + errName + ' ' + (err.message || err));
+            }
+          }
         }
-      } catch (err) {
-        // NotFoundException = nessun barcode in questo frame, ignora
-        if (err && err.name !== 'NotFoundException' && err.name !== 'NotFoundException2') {
-          dlog('SCAN: decode warn: ' + (err.name || '') + ' ' + (err.message || ''));
-        }
+      } catch (e) {
+        dlog('SCAN: loop err: ' + (e.message || e));
       }
-      // Continua loop se ancora attivo
+      // Continua loop se ancora attivo (200ms per ridurre carico CPU)
       if (state.zxingDecodeActive) {
         setTimeout(decodeLoop, 200);
       }
@@ -5145,7 +5192,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.9.8';
+const APP_VERSION = '1.9.9';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
