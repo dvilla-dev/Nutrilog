@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.9.1 -->
+<!-- NUTRILOG_VERSION: 1.9.2 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -337,7 +337,7 @@
     transition: background var(--dur) var(--ease);
   }
   .datenav .date-label:active { background: var(--surface-2); transform: scale(0.97); }
-  .datenav .date-label span { display: block; font-size: 11px; color: var(--text-3); font-weight: 500; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.1em; }
+  .datenav .date-label span { display: block; font-size: 11px; color: var(--text-3); font-weight: 500; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.1em; }
 
   /* ═══════════════════════════════════════════════════
      CALENDAR SHEET
@@ -2708,6 +2708,13 @@ async function boot() {
       pruneOldDiaryEntries().catch(e => dlog('PRUNE auto FAIL: ' + e.message));
     }, 2000);
   }
+  // Pre-warm dello scanner: prova a caricare ZXing in background
+  // così quando l'utente tappa Scan è già pronto.
+  setTimeout(() => {
+    loadZxing()
+      .then(() => dlog('BOOT: ZXing pre-warmed'))
+      .catch(e => dlog('BOOT: ZXing pre-warm FAIL - ' + e.message));
+  }, 1000);
 }
 
 async function loadAll() {
@@ -3407,18 +3414,43 @@ async function startScanner() {
   state.scanState = 'starting';
   state.scanError = '';
   render();
+  dlog('SCAN: starting...');
 
+  // STEP 1 — ZXing pronto?
   let zxing;
   try {
+    dlog('SCAN: step 1 - waiting for ZXing...');
     zxing = await loadZxing();
+    dlog('SCAN: step 1 OK - ZXing loaded');
   } catch (e) {
-    state.scanError = e.message || 'Impossibile caricare lo scanner';
+    dlog('SCAN: step 1 FAIL - ' + e.message);
+    state.scanError = '[ZXing] ' + (e.message || 'caricamento fallito');
     state.scanState = 'error';
     render();
     return;
   }
 
-  // Costruisci hints per i formati barcode usati nel retail
+  // STEP 2 — Browser supporta getUserMedia?
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    dlog('SCAN: step 2 FAIL - getUserMedia non disponibile');
+    state.scanError = '[getUserMedia] Il browser non supporta accesso fotocamera. Su iOS, lo scanner richiede Safari come PWA installata dalla home.';
+    state.scanState = 'error';
+    render();
+    return;
+  }
+  dlog('SCAN: step 2 OK - getUserMedia disponibile');
+
+  // STEP 3 — Verifica HTTPS (richiesto da iOS per camera)
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+    dlog('SCAN: step 3 FAIL - non-HTTPS context');
+    state.scanError = '[HTTPS] La fotocamera richiede HTTPS. Controlla l\'URL.';
+    state.scanState = 'error';
+    render();
+    return;
+  }
+  dlog('SCAN: step 3 OK - HTTPS context');
+
+  // STEP 4 — Crea il reader
   const hints = new Map();
   const F = zxing.BarcodeFormat;
   if (F && zxing.DecodeHintType) {
@@ -3428,46 +3460,79 @@ async function startScanner() {
       hints.set(zxing.DecodeHintType.TRY_HARDER, true);
     }
   }
-  const reader = new zxing.BrowserMultiFormatReader(hints, 200);
+  let reader;
+  try {
+    reader = new zxing.BrowserMultiFormatReader(hints, 200);
+    dlog('SCAN: step 4 OK - reader creato');
+  } catch (e) {
+    dlog('SCAN: step 4 FAIL - ' + e.message);
+    state.scanError = '[Reader] ' + (e.message || 'init fallita');
+    state.scanState = 'error';
+    render();
+    return;
+  }
   state.zxingReader = reader;
 
-  const video = document.getElementById('scan-video');
-  if (!video) { stopScanner(); return; }
+  // STEP 5 — Aspetta che il <video> element sia nel DOM (con retry breve)
+  let video = null;
+  for (let i = 0; i < 10; i++) {
+    video = document.getElementById('scan-video');
+    if (video) break;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  if (!video) {
+    dlog('SCAN: step 5 FAIL - <video> element non trovato');
+    state.scanError = '[Video] Element fotocamera non trovato nel DOM';
+    state.scanState = 'error';
+    render();
+    return;
+  }
+  dlog('SCAN: step 5 OK - <video> element trovato');
 
+  // STEP 6 — Apri la fotocamera
   try {
-    // Lista delle camere disponibili
     let deviceId = null;
     try {
       const devices = await reader.listVideoInputDevices();
+      dlog('SCAN: step 6a - ' + (devices ? devices.length : 0) + ' camere disponibili');
       if (devices && devices.length) {
-        // Preferisci back camera (cerca "back" o "rear" o "environment")
         const back = devices.find(d => /back|rear|environment/i.test(d.label));
         deviceId = (back || devices[devices.length - 1]).deviceId;
+        dlog('SCAN: step 6a - selezionata ' + (back ? 'back' : 'last'));
       }
-    } catch (_) {}
+    } catch (e) {
+      dlog('SCAN: step 6a WARN - listVideoInputDevices: ' + e.message);
+    }
 
+    dlog('SCAN: step 6b - decodeFromVideoDevice...');
     await reader.decodeFromVideoDevice(deviceId, video, (result, err, controls) => {
       if (result) {
         const code = result.getText();
-        dlog('ZXing decoded: ' + code);
+        dlog('SCAN: DECODED ' + code);
         stopScanner();
         handleBarcodeResult(code);
       }
-      // err per ogni frame senza match → ignora
     });
-    state.zxingControls = reader; // reader stesso ha .reset() per fermare
+    state.zxingControls = reader;
     state.scanState = 'running';
+    dlog('SCAN: step 6 OK - scanner running');
     render();
   } catch (err) {
-    if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
+    const errName = err && err.name ? err.name : 'unknown';
+    const errMsg = err && err.message ? err.message : String(err);
+    dlog('SCAN: step 6 FAIL - ' + errName + ': ' + errMsg);
+    if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
       state.scanError = 'Permesso fotocamera negato';
       state.scanState = 'denied';
-    } else if (err && err.name === 'NotFoundError') {
-      state.scanError = 'Nessuna fotocamera trovata';
+    } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+      state.scanError = '[NotFound] Nessuna fotocamera trovata';
       state.scanState = 'manual';
+    } else if (errName === 'NotReadableError' || errName === 'TrackStartError') {
+      state.scanError = '[NotReadable] Fotocamera occupata da un\'altra app. Chiudi le altre app e riprova.';
+      state.scanState = 'error';
     } else {
-      state.scanError = err && err.message ? err.message : 'Errore fotocamera';
-      state.scanState = 'manual';
+      state.scanError = '[' + errName + '] ' + errMsg;
+      state.scanState = 'error';
     }
     render();
   }
@@ -4486,17 +4551,17 @@ async function computeWeekSummary(anyDateInWeek) {
 }
 
 async function openCalendarSheet() {
-  // ±DIARY_RETENTION_DAYS giorni dal today, ma considera la finestra reale di retention
+  // Finestra navigabile: 14 giorni indietro (retention) + 14 giorni avanti
   const today = todayISO();
   const todayMs = new Date(today).getTime();
   const cutoffMs = todayMs - (DIARY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const futureMs = todayMs + (DIARY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
-  // Mostriamo le 4 settimane che contengono i giorni navigabili (la corrente + ~3 indietro)
-  // Calcolo lunedì della settimana di today, poi mostro 4 settimane: 3 indietro + corrente
+  // Mostriamo 6 settimane: 3 indietro + corrente + 2 avanti
   const currentMonday = getMondayOfWeek(today);
   const weeks = [];
-  for (let w = 3; w >= 0; w--) {
-    const monday = shiftDate(currentMonday, -7 * w);
+  for (let w = -3; w <= 2; w++) {
+    const monday = shiftDate(currentMonday, 7 * w);
     weeks.push(monday);
   }
 
@@ -4518,7 +4583,7 @@ async function openCalendarSheet() {
   function dateMs(iso) { return new Date(iso).getTime(); }
   function isInRetention(iso) {
     const ms = dateMs(iso);
-    return ms >= cutoffMs && ms <= todayMs;
+    return ms >= cutoffMs && ms <= futureMs;
   }
   function fmtMonth(iso) {
     const m = parseInt(iso.slice(5,7), 10) - 1;
@@ -4600,7 +4665,7 @@ async function openCalendarSheet() {
 
   const html = `
     <h2 class="sheet-title">Calendario</h2>
-    <p class="sheet-sub">Tap su un giorno per visualizzarlo. Disponibili gli ultimi ${DIARY_RETENTION_DAYS} giorni.</p>
+    <p class="sheet-sub">Tap su un giorno per visualizzarlo. Disponibile da ${DIARY_RETENTION_DAYS} giorni fa a ${DIARY_RETENTION_DAYS} giorni avanti.</p>
 
     <div class="cal-grid">
       ${dayHead.map(d => `<div class="cal-head">${d}</div>`).join('')}
@@ -4872,7 +4937,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.9.1';
+const APP_VERSION = '1.9.2';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -6362,13 +6427,19 @@ function bindApp() {
     b.onclick = async () => {
       const direction = b.dataset.date === 'next' ? 1 : -1;
       const newDate = shiftDate(state.date, direction);
-      // Limita la navigazione indietro al periodo di retention dei dati
+      const todayMs = new Date(todayISO()).getTime();
+      const newMs = new Date(newDate).getTime();
+      // Limiti: 14 giorni indietro (retention) e 14 giorni avanti (planning)
       if (direction === -1) {
-        const todayMs = new Date(todayISO()).getTime();
-        const newMs = new Date(newDate).getTime();
         const cutoffMs = todayMs - (DIARY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
         if (newMs < cutoffMs) {
           toast(`I dati oltre ${DIARY_RETENTION_DAYS} giorni vengono cancellati automaticamente`);
+          return;
+        }
+      } else {
+        const futureMs = todayMs + (DIARY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        if (newMs > futureMs) {
+          toast(`Pianificazione disponibile fino a ${DIARY_RETENTION_DAYS} giorni in avanti`);
           return;
         }
       }
