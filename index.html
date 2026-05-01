@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.9.2 -->
+<!-- NUTRILOG_VERSION: 1.9.4 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -3251,11 +3251,20 @@ function renderPhotoTab() {
 /* ─── SCAN (legacy, kept for compat) ─────────────────────── */
 function renderScan() {
   if (state.scanState === 'starting') {
-    return `<div style="padding:32px var(--pad-lg);text-align:center">
-      <div class="spinner"></div>
-      <div style="font-size:13px;color:var(--text-2);margin-top:14px">Avvio scanner...</div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:4px">Caricamento libreria di riconoscimento (~150KB la prima volta)</div>
-    </div>`;
+    // IMPORTANTE: il <video> deve essere già nel DOM quando startScanner() lo cerca.
+    // Mostriamo uno spinner overlay sopra al video container.
+    return `
+      <div class="scan-wrap">
+        <video id="scan-video" playsinline muted autoplay></video>
+        <div class="scan-overlay" style="background:rgba(0,0,0,0.5)">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:14px">
+            <div class="spinner"></div>
+            <div style="font-size:13px;color:var(--text)">Avvio scanner...</div>
+            <div style="font-size:11px;color:var(--text-2);max-width:280px;text-align:center">Apertura fotocamera in corso</div>
+          </div>
+        </div>
+      </div>
+    `;
   }
   if (state.scanState === 'lookup') {
     return `<div style="padding:32px var(--pad-lg);text-align:center">
@@ -3414,6 +3423,8 @@ async function startScanner() {
   state.scanState = 'starting';
   state.scanError = '';
   render();
+  // Aspetta che il browser abbia committato il DOM prima di cercare il <video>
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   dlog('SCAN: starting...');
 
   // STEP 1 — ZXing pronto?
@@ -3473,16 +3484,24 @@ async function startScanner() {
   }
   state.zxingReader = reader;
 
-  // STEP 5 — Aspetta che il <video> element sia nel DOM (con retry breve)
+  // STEP 5 — Aspetta che il <video> element sia nel DOM (con retry più lungo)
+  // Il <video> è nel template di renderScan() per gli stati 'starting' e 'idle'/'running'.
+  // Su iOS innerHTML può richiedere qualche frame per essere committato.
   let video = null;
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 25; i++) {
     video = document.getElementById('scan-video');
     if (video) break;
-    await new Promise(r => setTimeout(r, 50));
+    if (i === 5) {
+      // Dopo 1 secondo, forza un re-render esplicito al caso il render iniziale non sia andato a buon fine
+      dlog('SCAN: step 5 - forcing re-render');
+      render();
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    }
+    await new Promise(r => setTimeout(r, 200));
   }
   if (!video) {
-    dlog('SCAN: step 5 FAIL - <video> element non trovato');
-    state.scanError = '[Video] Element fotocamera non trovato nel DOM';
+    dlog('SCAN: step 5 FAIL - <video> element non trovato dopo 5s');
+    state.scanError = '[Video] Element fotocamera non trovato dopo 5 secondi. Tap "Riprova" qui sotto.';
     state.scanState = 'error';
     render();
     return;
@@ -4937,7 +4956,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.9.2';
+const APP_VERSION = '1.9.4';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
