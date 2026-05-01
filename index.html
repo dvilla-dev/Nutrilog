@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.9.5 -->
+<!-- NUTRILOG_VERSION: 1.9.6 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -3492,13 +3492,22 @@ async function startScanner() {
     dlog('SCAN: step 5 - <video> non trovato, lo creo');
     video = document.createElement('video');
     video.id = 'scan-video';
-    video.setAttribute('playsinline', 'true');
-    video.setAttribute('muted', 'true');
-    video.setAttribute('autoplay', 'true');
-    video.style.width = '100%';
-    video.style.height = '100%';
-    video.style.objectFit = 'cover';
+    // CRITICAL per iOS Safari: questi attributi DEVONO essere boolean setAttribute,
+    // non property assignment. iOS richiede playsinline e muted.
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.setAttribute('muted', '');
+    video.setAttribute('autoplay', '');
+    video.muted = true;
+    video.playsInline = true;
+    video.autoplay = true;
     createdVideo = true;
+  } else {
+    // Anche se trovato, garantisce gli attributi iOS
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.muted = true;
+    video.playsInline = true;
   }
   // Cerca il container scan-wrap
   const wrap = document.querySelector('.scan-wrap');
@@ -3551,10 +3560,58 @@ async function startScanner() {
         handleBarcodeResult(code);
       }
     });
+    // CRITICAL per iOS: dopo che ZXing ha settato srcObject,
+    // chiama play() esplicitamente per assicurare che il feed sia visibile
+    try {
+      const playPromise = video.play();
+      if (playPromise && playPromise.catch) {
+        playPromise.catch(e => dlog('SCAN: video.play() warn: ' + e.message));
+      }
+      dlog('SCAN: step 6c - video.play() invocato');
+    } catch (e) {
+      dlog('SCAN: step 6c warn: ' + e.message);
+    }
+    // Verifica dopo un attimo se il video sta effettivamente mostrando frame
+    setTimeout(() => {
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        dlog(`SCAN: step 6d WARN - video size ${video.videoWidth}x${video.videoHeight} (potrebbe essere nero)`);
+        // Tentativo di recovery: re-call play
+        video.play().catch(() => {});
+      } else {
+        dlog(`SCAN: step 6d OK - video size ${video.videoWidth}x${video.videoHeight}`);
+      }
+    }, 1000);
     state.zxingControls = reader;
     state.scanState = 'running';
     dlog('SCAN: step 6 OK - scanner running');
-    render();
+    // CRITICAL: NON chiamiamo render() perché distruggerebbe il <video>
+    // attivo (innerHTML rimuove tutti gli elementi). Invece nascondiamo
+    // manualmente l'overlay "Avvio scanner..." e mostriamo l'interfaccia
+    // di scansione.
+    const startingOverlay = document.querySelector('.scan-wrap .scan-overlay');
+    if (startingOverlay) {
+      // L'overlay scuro dello stato starting è già lì - sostituiamo il
+      // suo contenuto con il frame di scansione invece di rimuoverlo
+      startingOverlay.style.background = 'transparent';
+      startingOverlay.innerHTML = '<div class="scan-frame"><div class="scan-laser"></div></div>';
+    }
+    // Aggiungi il bottone "manuale" se non c'è già
+    const screen = document.getElementById('screen');
+    if (screen && !document.getElementById('to-manual')) {
+      const hint = document.createElement('div');
+      hint.className = 'scan-hint';
+      hint.textContent = 'Inquadra il codice a barre del prodotto';
+      const btnWrap = document.createElement('div');
+      btnWrap.style.padding = '0 var(--pad-lg)';
+      btnWrap.innerHTML = '<button class="btn btn-secondary" id="to-manual">Inserisci codice manualmente</button>';
+      screen.appendChild(hint);
+      screen.appendChild(btnWrap);
+      document.getElementById('to-manual').onclick = () => {
+        stopScanner();
+        state.scanState = 'manual';
+        render();
+      };
+    }
   } catch (err) {
     const errName = err && err.name ? err.name : 'unknown';
     const errMsg = err && err.message ? err.message : String(err);
@@ -4975,7 +5032,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.9.5';
+const APP_VERSION = '1.9.6';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
