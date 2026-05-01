@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.9.4 -->
+<!-- NUTRILOG_VERSION: 1.9.5 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -3484,29 +3484,48 @@ async function startScanner() {
   }
   state.zxingReader = reader;
 
-  // STEP 5 — Aspetta che il <video> element sia nel DOM (con retry più lungo)
-  // Il <video> è nel template di renderScan() per gli stati 'starting' e 'idle'/'running'.
-  // Su iOS innerHTML può richiedere qualche frame per essere committato.
-  let video = null;
-  for (let i = 0; i < 25; i++) {
-    video = document.getElementById('scan-video');
-    if (video) break;
-    if (i === 5) {
-      // Dopo 1 secondo, forza un re-render esplicito al caso il render iniziale non sia andato a buon fine
-      dlog('SCAN: step 5 - forcing re-render');
-      render();
-      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-    }
-    await new Promise(r => setTimeout(r, 200));
-  }
+  // STEP 5 — Trova o crea il <video> nel container
+  // Cerco il video esistente; se non c'è (race condition iOS), lo creo io
+  let video = document.getElementById('scan-video');
+  let createdVideo = false;
   if (!video) {
-    dlog('SCAN: step 5 FAIL - <video> element non trovato dopo 5s');
-    state.scanError = '[Video] Element fotocamera non trovato dopo 5 secondi. Tap "Riprova" qui sotto.';
-    state.scanState = 'error';
-    render();
-    return;
+    dlog('SCAN: step 5 - <video> non trovato, lo creo');
+    video = document.createElement('video');
+    video.id = 'scan-video';
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('muted', 'true');
+    video.setAttribute('autoplay', 'true');
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'cover';
+    createdVideo = true;
   }
-  dlog('SCAN: step 5 OK - <video> element trovato');
+  // Cerca il container scan-wrap
+  const wrap = document.querySelector('.scan-wrap');
+  if (createdVideo && wrap && !wrap.contains(video)) {
+    wrap.insertBefore(video, wrap.firstChild);
+    dlog('SCAN: step 5 - <video> creato e inserito in .scan-wrap');
+  } else if (createdVideo && !wrap) {
+    // Container ancora non c'è - aspetta un po' e riprova
+    dlog('SCAN: step 5 - .scan-wrap non trovato, attendo render...');
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      const w = document.querySelector('.scan-wrap');
+      if (w) {
+        w.insertBefore(video, w.firstChild);
+        dlog('SCAN: step 5 - <video> inserito dopo attesa');
+        break;
+      }
+    }
+    if (!document.querySelector('.scan-wrap')) {
+      dlog('SCAN: step 5 FAIL - .scan-wrap mai trovato');
+      state.scanError = '[Container] Schermata scanner non pronta. Tappa Scan di nuovo.';
+      state.scanState = 'error';
+      render();
+      return;
+    }
+  }
+  dlog('SCAN: step 5 OK - <video> pronto');
 
   // STEP 6 — Apri la fotocamera
   try {
@@ -4956,7 +4975,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.9.4';
+const APP_VERSION = '1.9.5';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
