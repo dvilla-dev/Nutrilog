@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.9.6 -->
+<!-- NUTRILOG_VERSION: 1.9.7 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -898,6 +898,28 @@
     color: var(--text-2);
     padding: 16px var(--pad-lg);
     font-size: 13px;
+  }
+  .scan-tap-hint {
+    position: absolute;
+    bottom: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(0,0,0,0.7);
+    padding: 4px 10px;
+    border-radius: 8px;
+    white-space: nowrap;
+    pointer-events: none;
+    letter-spacing: 0.04em;
+  }
+  .scan-frame-pulse {
+    animation: scanPulse 0.5s ease-out;
+  }
+  @keyframes scanPulse {
+    0%   { box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.45), 0 0 0 0 var(--accent); }
+    50%  { box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.45), 0 0 16px 4px var(--accent); }
+    100% { box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.45), 0 0 0 0 var(--accent); }
   }
 
   /* ═══════════════════════════════════════════════════
@@ -3538,21 +3560,26 @@ async function startScanner() {
 
   // STEP 6 — Apri la fotocamera
   try {
-    let deviceId = null;
-    try {
-      const devices = await reader.listVideoInputDevices();
-      dlog('SCAN: step 6a - ' + (devices ? devices.length : 0) + ' camere disponibili');
-      if (devices && devices.length) {
-        const back = devices.find(d => /back|rear|environment/i.test(d.label));
-        deviceId = (back || devices[devices.length - 1]).deviceId;
-        dlog('SCAN: step 6a - selezionata ' + (back ? 'back' : 'last'));
-      }
-    } catch (e) {
-      dlog('SCAN: step 6a WARN - listVideoInputDevices: ' + e.message);
-    }
+    // Constraints per camera: chiediamo back camera + autofocus continuo + HD
+    // facingMode 'environment' = camera posteriore (più affidabile di deviceId su iOS)
+    // focusMode 'continuous' = autofocus attivo (CRITICAL su iOS che default è fisso)
+    // height/width target HD per dettaglio sufficiente sui barcode
+    const constraints = {
+      audio: false,
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        // advanced constraints per autofocus su iOS Safari
+        advanced: [
+          { focusMode: 'continuous' },
+          { focusMode: 'auto' },
+        ],
+      },
+    };
 
-    dlog('SCAN: step 6b - decodeFromVideoDevice...');
-    await reader.decodeFromVideoDevice(deviceId, video, (result, err, controls) => {
+    dlog('SCAN: step 6b - decodeFromConstraints (autofocus + HD)...');
+    await reader.decodeFromConstraints(constraints, video, (result, err, controls) => {
       if (result) {
         const code = result.getText();
         dlog('SCAN: DECODED ' + code);
@@ -3560,8 +3587,37 @@ async function startScanner() {
         handleBarcodeResult(code);
       }
     });
-    // CRITICAL per iOS: dopo che ZXing ha settato srcObject,
-    // chiama play() esplicitamente per assicurare che il feed sia visibile
+
+    // Forza autofocus continuo direttamente sulla traccia video, dopo che lo stream è attivo
+    setTimeout(() => {
+      try {
+        const stream = video.srcObject;
+        if (stream && stream.getVideoTracks) {
+          const track = stream.getVideoTracks()[0];
+          if (track && track.applyConstraints) {
+            track.applyConstraints({
+              advanced: [
+                { focusMode: 'continuous' },
+                { focusDistance: 0.0 },
+              ],
+            }).then(() => {
+              dlog('SCAN: autofocus continuo attivato');
+            }).catch(e => {
+              dlog('SCAN: autofocus warn: ' + (e.message || 'non supportato'));
+            });
+            // Log delle capabilities della camera per debug
+            if (track.getCapabilities) {
+              const caps = track.getCapabilities();
+              dlog(`SCAN: camera caps - focus: ${caps.focusMode || 'N/A'}, zoom: ${caps.zoom ? 'sì' : 'no'}`);
+            }
+          }
+        }
+      } catch (e) {
+        dlog('SCAN: autofocus setup warn: ' + e.message);
+      }
+    }, 800);
+
+    // CRITICAL per iOS: chiama play() esplicitamente
     try {
       const playPromise = video.play();
       if (playPromise && playPromise.catch) {
@@ -3575,7 +3631,6 @@ async function startScanner() {
     setTimeout(() => {
       if (video.videoWidth === 0 || video.videoHeight === 0) {
         dlog(`SCAN: step 6d WARN - video size ${video.videoWidth}x${video.videoHeight} (potrebbe essere nero)`);
-        // Tentativo di recovery: re-call play
         video.play().catch(() => {});
       } else {
         dlog(`SCAN: step 6d OK - video size ${video.videoWidth}x${video.videoHeight}`);
@@ -3590,10 +3645,38 @@ async function startScanner() {
     // di scansione.
     const startingOverlay = document.querySelector('.scan-wrap .scan-overlay');
     if (startingOverlay) {
-      // L'overlay scuro dello stato starting è già lì - sostituiamo il
-      // suo contenuto con il frame di scansione invece di rimuoverlo
       startingOverlay.style.background = 'transparent';
-      startingOverlay.innerHTML = '<div class="scan-frame"><div class="scan-laser"></div></div>';
+      startingOverlay.innerHTML = '<div class="scan-frame" id="scan-frame-tap"><div class="scan-laser"></div><div class="scan-tap-hint">Tocca per mettere a fuoco</div></div>';
+      // Tap-to-focus: forza un re-apply dei constraints di focus quando l'utente tocca il frame
+      const frameEl = document.getElementById('scan-frame-tap');
+      if (frameEl) {
+        frameEl.style.pointerEvents = 'auto';
+        frameEl.style.cursor = 'pointer';
+        frameEl.addEventListener('click', () => {
+          try {
+            const stream = video.srcObject;
+            if (stream && stream.getVideoTracks) {
+              const track = stream.getVideoTracks()[0];
+              if (track && track.applyConstraints) {
+                // Trick: applica focus 'manual' poi torna a 'continuous' per forzare il re-focus
+                track.applyConstraints({
+                  advanced: [{ focusMode: 'manual', focusDistance: 0.3 }],
+                }).then(() => {
+                  setTimeout(() => {
+                    track.applyConstraints({
+                      advanced: [{ focusMode: 'continuous' }],
+                    }).catch(() => {});
+                  }, 100);
+                  dlog('SCAN: tap-to-focus triggered');
+                  // Feedback visivo: pulse del frame
+                  frameEl.classList.add('scan-frame-pulse');
+                  setTimeout(() => frameEl.classList.remove('scan-frame-pulse'), 500);
+                }).catch(e => dlog('SCAN: tap-focus warn: ' + e.message));
+              }
+            }
+          } catch (e) { dlog('SCAN: tap-focus error: ' + e.message); }
+        });
+      }
     }
     // Aggiungi il bottone "manuale" se non c'è già
     const screen = document.getElementById('screen');
@@ -5032,7 +5115,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.9.6';
+const APP_VERSION = '1.9.7';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
