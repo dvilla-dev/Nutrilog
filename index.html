@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.7.0 -->
+<!-- NUTRILOG_VERSION: 1.9.1 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -328,8 +328,91 @@
     letter-spacing: -0.01em;
     text-align: center;
     flex: 1;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    padding: 8px 4px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background var(--dur) var(--ease);
   }
+  .datenav .date-label:active { background: var(--surface-2); transform: scale(0.97); }
   .datenav .date-label span { display: block; font-size: 11px; color: var(--text-3); font-weight: 500; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.1em; }
+
+  /* ═══════════════════════════════════════════════════
+     CALENDAR SHEET
+     ═══════════════════════════════════════════════════ */
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .cal-head {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-3);
+    text-align: center;
+    padding: 6px 0;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .cal-cell {
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all var(--dur) var(--ease);
+    padding: 4px;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    position: relative;
+    min-height: 44px;
+  }
+  .cal-cell:active { transform: scale(0.94); }
+  .cal-cell.cal-today {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .cal-cell.cal-selected {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+  .cal-cell.cal-disabled {
+    opacity: 0.28;
+    cursor: not-allowed;
+  }
+  .cal-cell .cal-month {
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--text-3);
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .cal-cell.cal-selected .cal-month { color: rgba(0,0,0,0.55); }
+  .cal-cell .cal-dot {
+    position: absolute;
+    bottom: 4px;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .cal-cell.cal-selected .cal-dot { background: #000; }
+  .cal-week-summary {
+    margin: 8px 0 16px;
+    padding: 14px;
+    background: var(--surface-2);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
 
   /* ═══════════════════════════════════════════════════
      MEAL SECTIONS
@@ -1075,6 +1158,8 @@
     font-size: 14px;
   }
 </style>
+<!-- ZXing barcode scanner library (caricato statico per affidabilità su iOS PWA) -->
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js" defer></script>
 </head>
 <body>
 <div id="app"></div>
@@ -1123,6 +1208,7 @@ const state = {
   customFoods: [],
   templates: [],
   searchResults: [],
+  searchTemplateResults: [],
   searchState: 'idle',
   searchQuery: '',
   searchError: '',
@@ -1368,7 +1454,7 @@ async function getStorageUsage() {
     }
   } else {
     // window.storage: list all prefixes and sum
-    const prefixes = ['users:', 'diary:', 'customFoods:', 'mealTemplates:', 'goals:', 'dbOverrides:', 'dbAdditions:', 'session'];
+    const prefixes = ['users:', 'diary:', 'customFoods:', 'mealTemplates:', 'goals:', 'dbOverrides:', 'dbAdditions:', 'dbHidden:', 'session'];
     for (const pref of prefixes) {
       const keys = await sl(pref);
       for (const k of keys) {
@@ -1446,6 +1532,7 @@ async function exportUserData() {
     mealTemplates: [],
     dbOverrides: {},
     dbAdditions: [],
+    dbHidden: [],
   };
   const diaryKeys = await sl(`diary:${userId}:`);
   for (const k of diaryKeys) {
@@ -1474,6 +1561,12 @@ async function exportUserData() {
   for (const k of addKeys) {
     const a = await sg(k);
     if (a) out.dbAdditions.push({ ...a, _id: k.split(':').pop() });
+  }
+  // DB hidden (alimenti CREA-INRAN nascosti dall'utente)
+  const hidKeys = await sl(`dbHidden:${userId}:`);
+  for (const k of hidKeys) {
+    const idx = parseInt(k.split(':').pop(), 10);
+    if (!isNaN(idx)) out.dbHidden.push(idx);
   }
   return out;
 }
@@ -1541,6 +1634,17 @@ async function importUserData(payload, { mode = 'merge' } = {}) {
       const { _id, ...clean } = a;
       await ss(`dbAdditions:${userId}:${id}`, clean);
       imported.dbAdditions++;
+    }
+  }
+  // DB hidden
+  if (Array.isArray(payload.dbHidden)) {
+    imported.dbHidden = 0;
+    for (const idx of payload.dbHidden) {
+      const n = parseInt(idx, 10);
+      if (!isNaN(n)) {
+        await ss(`dbHidden:${userId}:${n}`, { hiddenAt: Date.now() });
+        imported.dbHidden++;
+      }
     }
   }
   return imported;
@@ -2327,7 +2431,7 @@ function stripAccents(s) {
  */
 async function getLocalFoods() {
   if (!state.user || !state.user.userId) {
-    return LOCAL_FOODS.map((f, i) => ({ ...f, _kind: 'builtin', _index: i, _modified: false }));
+    return LOCAL_FOODS.map((f, i) => ({ ...f, _kind: 'builtin', _index: i, _modified: false, _hidden: false }));
   }
   const userId = state.user.userId;
   // Override: chiave per ogni alimento builtin modificato
@@ -2340,20 +2444,61 @@ async function getLocalFoods() {
       if (o) overrides[idx] = o;
     }
   }
+  // Hidden: alimenti CREA-INRAN nascosti dall'utente
+  const hiddenKeys = await sl(`dbHidden:${userId}:`);
+  const hiddenSet = new Set();
+  for (const k of hiddenKeys) {
+    const idx = parseInt(k.split(':').pop(), 10);
+    if (!isNaN(idx)) hiddenSet.add(idx);
+  }
   // Builtin con override applicati
   const result = LOCAL_FOODS.map((f, i) => {
     const o = overrides[i];
-    if (o) {
-      return { ...f, ...o, _kind: 'builtin', _index: i, _modified: true };
-    }
-    return { ...f, _kind: 'builtin', _index: i, _modified: false };
-  });
+    const base = o ? { ...f, ...o, _modified: true } : { ...f, _modified: false };
+    return { ...base, _kind: 'builtin', _index: i, _hidden: hiddenSet.has(i) };
+  }).filter(f => !f._hidden); // filtra i nascosti per default (li mostriamo solo on-demand)
   // Additions: alimenti completamente nuovi aggiunti dall'utente
   const addKeys = await sl(`dbAdditions:${userId}:`);
   for (const k of addKeys) {
     const a = await sg(k);
     if (a) {
       result.push({ ...a, _kind: 'added', _addId: k.split(':').pop() });
+    }
+  }
+  return result;
+}
+
+// Restituisce tutti gli alimenti incluso i nascosti (per la gestione)
+async function getAllDbFoods() {
+  if (!state.user || !state.user.userId) {
+    return LOCAL_FOODS.map((f, i) => ({ ...f, _kind: 'builtin', _index: i, _modified: false, _hidden: false }));
+  }
+  const userId = state.user.userId;
+  const ovKeys = await sl(`dbOverrides:${userId}:`);
+  const overrides = {};
+  for (const k of ovKeys) {
+    const idx = parseInt(k.split(':').pop(), 10);
+    if (!isNaN(idx)) {
+      const o = await sg(k);
+      if (o) overrides[idx] = o;
+    }
+  }
+  const hiddenKeys = await sl(`dbHidden:${userId}:`);
+  const hiddenSet = new Set();
+  for (const k of hiddenKeys) {
+    const idx = parseInt(k.split(':').pop(), 10);
+    if (!isNaN(idx)) hiddenSet.add(idx);
+  }
+  const result = LOCAL_FOODS.map((f, i) => {
+    const o = overrides[i];
+    const base = o ? { ...f, ...o, _modified: true } : { ...f, _modified: false };
+    return { ...base, _kind: 'builtin', _index: i, _hidden: hiddenSet.has(i) };
+  });
+  const addKeys = await sl(`dbAdditions:${userId}:`);
+  for (const k of addKeys) {
+    const a = await sg(k);
+    if (a) {
+      result.push({ ...a, _kind: 'added', _addId: k.split(':').pop(), _hidden: false });
     }
   }
   return result;
@@ -2394,6 +2539,47 @@ function searchLocal(q) {
   }
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, 20).map(x => x.food);
+}
+
+function searchCustomFoods(q) {
+  const qLow = stripAccents(q.trim().toLowerCase());
+  if (!qLow) return [];
+  const tokens = qLow.split(/\s+/).filter(Boolean);
+  const list = state.customFoods || [];
+  const scored = [];
+  for (const f of list) {
+    const hay = stripAccents(((f.name || '') + ' ' + (f.brand || '')).toLowerCase());
+    let match = true, score = 0;
+    for (const t of tokens) {
+      const idx = hay.indexOf(t);
+      if (idx === -1) { match = false; break; }
+      score += (idx === 0 ? 10 : 1);
+    }
+    if (match) scored.push({ food: { ...f, _custom: true }, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map(s => s.food);
+}
+
+function searchTemplates(q) {
+  const qLow = stripAccents(q.trim().toLowerCase());
+  if (!qLow) return [];
+  const tokens = qLow.split(/\s+/).filter(Boolean);
+  const list = state.templates || [];
+  const scored = [];
+  for (const t of list) {
+    const itemNames = (t.items || []).map(it => it.name).join(' ');
+    const hay = stripAccents(((t.name || '') + ' ' + itemNames).toLowerCase());
+    let match = true, score = 0;
+    for (const tok of tokens) {
+      const idx = hay.indexOf(tok);
+      if (idx === -1) { match = false; break; }
+      score += (idx === 0 ? 10 : 1);
+    }
+    if (match) scored.push({ tpl: t, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map(s => s.tpl);
 }
 
 async function searchOFF(q) {
@@ -2790,7 +2976,7 @@ function renderToday() {
   return `
     <div class="datenav">
       <button data-date="prev" aria-label="Giorno precedente">${I.left}</button>
-      <div class="date-label">${pDate.main}<span>${pDate.sub}</span></div>
+      <button class="date-label" data-open-calendar aria-label="Apri calendario">${pDate.main}<span>${pDate.sub}</span></button>
       <button data-date="next" aria-label="Giorno successivo">${I.right}</button>
     </div>
 
@@ -2827,6 +3013,11 @@ function renderToday() {
       ${micro('Fibre', t.fiber, g.fiber, 'g')}
       ${micro('Zuccheri', t.sugar, g.sugar, 'g')}
       ${micro('Sodio', t.sodium, g.sodium, 'mg')}
+    </div>
+
+    <h3 class="section-title">Settimana</h3>
+    <div id="week-summary-card" class="card" style="padding:18px 18px 16px">
+      <div style="font-size:13px;color:var(--text-2)">Calcolo riepilogo...</div>
     </div>
 
     <h3 class="section-title">Pasti</h3>
@@ -2883,19 +3074,45 @@ function renderSearch() {
       <div style="margin-bottom:6px">Nessun risultato per "${esc(state.searchQuery)}"</div>
       <div style="font-size:12px;color:var(--text-3);margin-bottom:16px">Prova un termine più generico o crea un alimento custom</div>
     </div>`;
-  else if (state.searchState === 'idle' && !state.searchQuery) content = `<div class="state">${I.search}<div>Cerca un alimento per iniziare<br><small style="color:var(--text-3)">Database italiano + i tuoi alimenti</small></div></div>`;
-  else if (state.searchResults.length) {
-    content = state.searchResults.map(f => `
-      <div class="result" data-pick="${esc(f.id)}">
-        ${f.image_url
-          ? `<img class="result-img" src="${esc(f.image_url)}" onerror="this.outerHTML='<div class=\\'result-img-placeholder\\'>${I.leaf}</div>'">`
-          : `<div class="result-img-placeholder">${I.leaf}</div>`}
-        <div class="result-main">
-          <div class="result-name">${esc(f.name)}${f._custom ? '<span class="result-tag">Mio</span>' : ''}${f._ai ? '<span class="result-tag" style="background:rgba(0,224,255,0.12);color:#00E0FF">AI</span>' : ''}</div>
-          <div class="result-meta">${esc(f.brand || 'Senza marca')} · ${round(f.protein,1)}P · ${round(f.carbs,1)}C · ${round(f.fat,1)}G</div>
-        </div>
-        <div class="result-kcal">${round(f.kcal)}<div style="font-size:10px;color:var(--text-3);font-weight:400;letter-spacing:0.08em">kcal/100g</div></div>
-      </div>`).join('');
+  else if (state.searchState === 'idle' && !state.searchQuery) content = `<div class="state">${I.search}<div>Cerca un alimento per iniziare<br><small style="color:var(--text-3)">I tuoi alimenti, i tuoi pasti, il database</small></div></div>`;
+  else if (state.searchResults.length || (state.searchTemplateResults && state.searchTemplateResults.length)) {
+    let parts = [];
+    // Sezione: Pasti salvati che matchano (se ce ne sono)
+    if (state.searchTemplateResults && state.searchTemplateResults.length) {
+      parts.push(`
+        <div style="font-size:11px;font-weight:600;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;padding:14px 4px 8px">I tuoi pasti</div>
+        ${state.searchTemplateResults.map(t => {
+          const itemCount = (t.items || []).length;
+          const totalKcal = (t.items || []).reduce((acc, it) => acc + (it.kcal || 0) * (it.grams || 0) / 100, 0);
+          return `
+            <div class="result" data-pick-tpl="${esc(t.id)}">
+              <div class="result-img-placeholder">${I.stack}</div>
+              <div class="result-main">
+                <div class="result-name">${esc(t.name)}<span class="result-tag" style="background:rgba(255,176,32,0.12);color:var(--warning,#fb0)">Pasto</span></div>
+                <div class="result-meta">${itemCount} aliment${itemCount === 1 ? 'o' : 'i'}</div>
+              </div>
+              <div class="result-kcal">${round(totalKcal)}<div style="font-size:10px;color:var(--text-3);font-weight:400;letter-spacing:0.08em">kcal totali</div></div>
+            </div>`;
+        }).join('')}
+      `);
+    }
+    // Sezione: Alimenti
+    if (state.searchResults.length) {
+      const hasTpls = state.searchTemplateResults && state.searchTemplateResults.length;
+      if (hasTpls) parts.push(`<div style="font-size:11px;font-weight:600;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;padding:14px 4px 8px">Alimenti</div>`);
+      parts.push(state.searchResults.map(f => `
+        <div class="result" data-pick="${esc(f.id)}">
+          ${f.image_url
+            ? `<img class="result-img" src="${esc(f.image_url)}" onerror="this.outerHTML='<div class=\\'result-img-placeholder\\'>${I.leaf}</div>'">`
+            : `<div class="result-img-placeholder">${I.leaf}</div>`}
+          <div class="result-main">
+            <div class="result-name">${esc(f.name)}${f._custom ? '<span class="result-tag">Mio</span>' : ''}${f._ai ? '<span class="result-tag" style="background:rgba(0,224,255,0.12);color:#00E0FF">AI</span>' : ''}</div>
+            <div class="result-meta">${esc(f.brand || 'Senza marca')} · ${round(f.protein,1)}P · ${round(f.carbs,1)}C · ${round(f.fat,1)}G</div>
+          </div>
+          <div class="result-kcal">${round(f.kcal)}<div style="font-size:10px;color:var(--text-3);font-weight:400;letter-spacing:0.08em">kcal/100g</div></div>
+        </div>`).join(''));
+    }
+    content = parts.join('');
   }
   return `
     <div class="search-bar">
@@ -2921,6 +3138,7 @@ const doSearch = debounce(async (q) => {
   if (!q || q.length < 2) {
     state.searchState = 'idle';
     state.searchResults = [];
+    state.searchTemplateResults = [];
     state.searchQuery = q;
     state.searchError = '';
     updateSearchResults();
@@ -2931,20 +3149,28 @@ const doSearch = debounce(async (q) => {
   state.searchError = '';
   updateSearchResults();
   try {
+    // 1) Cerca tra "I miei alimenti" (custom)
+    const customMatches = searchCustomFoods(q);
+    // 2) Cerca tra "Pasti salvati" (templates)
+    const tplMatches = searchTemplates(q);
+    // 3) Cerca nel DB locale + AI fallback (searchOFF gestisce entrambi)
     const offResults = await searchOFF(q);
-    const qLow = q.toLowerCase();
-    const customMatches = state.customFoods
-      .filter(f => (f.name || '').toLowerCase().includes(qLow) || (f.brand || '').toLowerCase().includes(qLow))
-      .map(f => ({ ...f, _custom: true }));
-    const combined = [...customMatches, ...offResults];
-    if (combined.length === 0) state.searchState = 'empty';
+
+    // Dedup: se un custom ha lo stesso nome di un built-in, mostra solo il custom
+    const customKeys = new Set(customMatches.map(c => stripAccents((c.name || '').toLowerCase())));
+    const dbFiltered = offResults.filter(f => !customKeys.has(stripAccents((f.name || '').toLowerCase())));
+    const combined = [...customMatches, ...dbFiltered];
+
+    if (combined.length === 0 && tplMatches.length === 0) state.searchState = 'empty';
     else state.searchState = 'results';
     state.searchResults = combined;
+    state.searchTemplateResults = tplMatches;
     updateSearchResults();
   } catch (e) {
     state.searchState = 'error';
     state.searchError = (e && e.message) ? e.message : String(e);
     state.searchResults = [];
+    state.searchTemplateResults = [];
     console.error('[NutriLog] search error:', e);
     updateSearchResults();
   }
@@ -3126,41 +3352,54 @@ function renderScan() {
 }
 
 /* ─── ZXING SCANNER ───────────────────────────────────────
-   Carica ZXing come script UMD dal CDN (iOS PWA non gestisce
-   bene import() da CDN — script tag è universale).
+   ZXing è caricato staticamente nell'<head> con tag <script defer>.
+   Qui aspettiamo solo che window.ZXing sia disponibile.
    ──────────────────────────────────────────────────────── */
-const ZXING_CDN = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
-let _zxingPromise = null;
+const ZXING_READY_TIMEOUT = 15000;
+
 function loadZxing() {
-  if (window.ZXing || (window.ZXingBrowser && window.ZXingBrowser.BrowserMultiFormatReader)) {
-    return Promise.resolve(window.ZXingBrowser || window.ZXing);
+  // Se già caricato, restituisci immediatamente
+  if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
+    return Promise.resolve(window.ZXing);
   }
-  if (_zxingPromise) return _zxingPromise;
-  _zxingPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = ZXING_CDN;
-    script.async = true;
-    const timer = setTimeout(() => {
-      reject(new Error('Timeout caricamento ZXing (20s) — controlla la connessione'));
-    }, 20000);
-    script.onload = () => {
-      clearTimeout(timer);
-      // ZXing UMD esporta su window.ZXing (con BrowserMultiFormatReader e BarcodeFormat)
+  // Altrimenti polla a intervalli regolari fino al timeout
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    let elapsed = 0;
+    const checkInterval = setInterval(() => {
+      elapsed = Date.now() - start;
       if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
-        dlog('ZXing UMD loaded');
+        clearInterval(checkInterval);
+        dlog('ZXing pronto dopo ' + elapsed + 'ms');
         resolve(window.ZXing);
-      } else {
-        reject(new Error('ZXing caricato ma BrowserMultiFormatReader mancante'));
+        return;
       }
-    };
-    script.onerror = (e) => {
-      clearTimeout(timer);
-      _zxingPromise = null;
-      reject(new Error('Errore download ZXing dal CDN'));
-    };
-    document.head.appendChild(script);
+      if (elapsed > ZXING_READY_TIMEOUT) {
+        clearInterval(checkInterval);
+        // Tentativo di fallback: inietta script dinamicamente come ultima risorsa
+        dlog('ZXing static timeout, fallback dynamic injection...');
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+        const fallbackTimer = setTimeout(() => {
+          reject(new Error('Caricamento ZXing fallito (timeout). Controlla la connessione e riprova.'));
+        }, 10000);
+        script.onload = () => {
+          clearTimeout(fallbackTimer);
+          if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
+            dlog('ZXing fallback dynamic OK');
+            resolve(window.ZXing);
+          } else {
+            reject(new Error('ZXing caricato ma BrowserMultiFormatReader mancante'));
+          }
+        };
+        script.onerror = () => {
+          clearTimeout(fallbackTimer);
+          reject(new Error('Impossibile caricare ZXing dal CDN. Controlla la connessione.'));
+        };
+        document.head.appendChild(script);
+      }
+    }, 100);
   });
-  return _zxingPromise;
 }
 
 async function startScanner() {
@@ -3949,10 +4188,13 @@ function openCustomFoodsSheet() {
    al DB CREA-INRAN. Le modifiche sono salvate come override
    in storage e propagate al cloud via auto-sync.
    ──────────────────────────────────────────────────────── */
-async function openDbFoodsSheet(filter = '') {
+async function openDbFoodsSheet(filter = '', showHidden = false) {
   // Refresh cache per essere certi di avere lo stato più recente
   await refreshDbFoodsCache();
-  const list = state.dbFoods || [];
+  // Per la lista usiamo getAllDbFoods se vogliamo vedere anche i nascosti
+  const list = showHidden ? await getAllDbFoods() : (state.dbFoods || []);
+  const allList = await getAllDbFoods();
+  const hiddenCount = allList.filter(f => f._hidden).length;
   const fLow = stripAccents(filter.trim().toLowerCase());
   const filtered = !fLow ? list : list.filter(f => {
     const hay = stripAccents((f.name + ' ' + (f.brand || '')).toLowerCase());
@@ -3961,8 +4203,8 @@ async function openDbFoodsSheet(filter = '') {
   const totalMod = list.filter(f => f._modified).length;
   const totalAdd = list.filter(f => f._kind === 'added').length;
   const html = `
-    <h2 class="sheet-title">Database alimenti</h2>
-    <p class="sheet-sub">${list.length} alimenti${totalMod || totalAdd ? ` · ${totalMod} modificat${totalMod === 1 ? 'o' : 'i'}, ${totalAdd} aggiunt${totalAdd === 1 ? 'o' : 'i'}` : ' · valori CREA-INRAN ufficiali'}</p>
+    <h2 class="sheet-title">Database alimenti${showHidden ? ' (con rimossi)' : ''}</h2>
+    <p class="sheet-sub">${list.length} alimenti${totalMod || totalAdd ? ` · ${totalMod} modificat${totalMod === 1 ? 'o' : 'i'}, ${totalAdd} aggiunt${totalAdd === 1 ? 'o' : 'i'}` : ' · valori CREA-INRAN ufficiali'}${hiddenCount && !showHidden ? ` · ${hiddenCount} rimoss${hiddenCount === 1 ? 'o' : 'i'}` : ''}</p>
 
     <button class="btn btn-primary" id="db-new" style="margin-bottom:10px">${I.plus}<span>Nuovo alimento</span></button>
 
@@ -3975,16 +4217,26 @@ async function openDbFoodsSheet(filter = '') {
         const idAttr = f._kind === 'added' ? `add-${f._addId}` : `idx-${f._index}`;
         const modBadge = f._modified ? `<span style="display:inline-block;background:var(--accent-dim);color:var(--accent);font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;letter-spacing:0.05em;text-transform:uppercase">MOD</span>` : '';
         const addBadge = f._kind === 'added' ? `<span style="display:inline-block;background:rgba(85,200,255,0.15);color:#5cf;font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;letter-spacing:0.05em;text-transform:uppercase">NUOVO</span>` : '';
+        const hidBadge = f._hidden ? `<span style="display:inline-block;background:rgba(255,69,58,0.15);color:var(--danger);font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;letter-spacing:0.05em;text-transform:uppercase">RIMOSSO</span>` : '';
         return `
-        <div style="display:flex;align-items:center;gap:12px;padding:11px 6px;border-bottom:1px solid var(--border)" data-db-row="${idAttr}">
+        <div style="display:flex;align-items:center;gap:12px;padding:11px 6px;border-bottom:1px solid var(--border);${f._hidden ? 'opacity:0.55' : ''}" data-db-row="${idAttr}">
           <div style="flex:1;min-width:0">
-            <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}${modBadge}${addBadge}</div>
+            <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}${modBadge}${addBadge}${hidBadge}</div>
             <div style="font-size:12px;color:var(--text-2);margin-top:2px">${esc(f.brand || 'CREA-INRAN')} · ${round(f.kcal)} kcal · P${round(f.protein)} C${round(f.carbs)} G${round(f.fat)}</div>
           </div>
-          <button class="icon-btn" data-edit-db="${idAttr}" aria-label="Modifica">${I.edit}</button>
+          ${f._hidden
+            ? `<button class="icon-btn" data-restore-db="${idAttr}" aria-label="Ripristina" style="color:var(--accent)">${I.refresh}</button>`
+            : `<button class="icon-btn" data-edit-db="${idAttr}" aria-label="Modifica">${I.edit}</button>`
+          }
         </div>`;
       }).join('') + (filtered.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${filtered.length - 100} altri risultati. Affina la ricerca.</div>` : '')}
     </div>
+
+    ${hiddenCount > 0 ? `
+      <button class="btn btn-ghost" id="db-toggle-hidden" style="margin-top:14px;font-size:13px">
+        ${showHidden ? 'Nascondi alimenti rimossi' : `Mostra ${hiddenCount} alimenti rimossi`}
+      </button>
+    ` : ''}
   `;
   openSheet(html);
   const searchInput = document.getElementById('db-search');
@@ -3992,7 +4244,7 @@ async function openDbFoodsSheet(filter = '') {
     let t;
     searchInput.oninput = () => {
       clearTimeout(t);
-      t = setTimeout(() => openDbFoodsSheet(searchInput.value), 220);
+      t = setTimeout(() => openDbFoodsSheet(searchInput.value, showHidden), 220);
     };
   }
   document.getElementById('db-new').onclick = () => openDbFoodEditor(null);
@@ -4010,6 +4262,20 @@ async function openDbFoodsSheet(filter = '') {
       }
     };
   });
+  document.querySelectorAll('[data-restore-db]').forEach(b => {
+    b.onclick = async () => {
+      const ref = b.dataset.restoreDb;
+      if (!ref.startsWith('idx-')) return;
+      const idx = parseInt(ref.slice(4), 10);
+      await sd(`dbHidden:${state.user.userId}:${idx}`);
+      await refreshDbFoodsCache();
+      if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
+      toast('Ripristinato');
+      openDbFoodsSheet(filter, showHidden);
+    };
+  });
+  const toggleBtn = document.getElementById('db-toggle-hidden');
+  if (toggleBtn) toggleBtn.onclick = () => openDbFoodsSheet(filter, !showHidden);
 }
 
 function openDbFoodEditor(food) {
@@ -4041,7 +4307,8 @@ function openDbFoodEditor(food) {
       <div class="field"><label>Sodio (mg / 100g)</label><input class="input" name="sodium" type="number" inputmode="decimal" step="1" min="0" value="${f.sodium}"></div>
 
       <button class="btn btn-primary" type="submit" style="margin-top:6px">Salva</button>
-      ${isBuiltin && food._modified ? `<button type="button" class="btn btn-secondary" id="db-reset" style="margin-top:8px">${I.refresh || ''}<span>Ripristina valori CREA-INRAN</span></button>` : ''}
+      ${isBuiltin && food._modified ? `<button type="button" class="btn btn-secondary" id="db-reset" style="margin-top:8px">${I.refresh}<span>Ripristina valori CREA-INRAN</span></button>` : ''}
+      ${isBuiltin ? `<button type="button" class="btn btn-secondary" id="db-hide" style="margin-top:8px;color:var(--danger)">${I.trash}<span>Rimuovi dal database</span></button>` : ''}
       ${isAdded ? `<button type="button" class="btn btn-secondary" id="db-delete" style="margin-top:8px;color:var(--danger)">${I.trash}<span>Elimina alimento</span></button>` : ''}
       <button type="button" class="btn btn-ghost" id="db-cancel" style="margin-top:8px">Annulla</button>
     </form>
@@ -4098,6 +4365,17 @@ function openDbFoodEditor(food) {
     toast('Eliminato');
     openDbFoodsSheet();
   };
+  const hideBtn = document.getElementById('db-hide');
+  if (hideBtn) hideBtn.onclick = async () => {
+    if (!confirm('Rimuovere "' + f.name + '" dal database?\n\nL\'alimento sarà nascosto dalla ricerca. Potrai ripristinarlo dalla schermata "Database alimenti".')) return;
+    // Salva nascondiglio + rimuovi eventuale override
+    await ss(`dbHidden:${state.user.userId}:${food._index}`, { hiddenAt: Date.now() });
+    await sd(`dbOverrides:${state.user.userId}:${food._index}`);
+    await refreshDbFoodsCache();
+    if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
+    toast('Rimosso dal database');
+    openDbFoodsSheet();
+  };
 }
 
 function openCustomFoodEditor(food) {
@@ -4150,6 +4428,264 @@ function openCustomFoodEditor(food) {
 }
 
 /* ─── TEMPLATES SHEET ──────────────────────────────────── */
+/* ─── CALENDARIO + RIEPILOGO SETTIMANALE ──────────────────
+   Mostra ±DIARY_RETENTION_DAYS giorni con possibilità di
+   navigare e vedere il riepilogo settimanale (Lun-Dom).
+   ──────────────────────────────────────────────────────── */
+function getMondayOfWeek(iso) {
+  // ISO "YYYY-MM-DD" → ritorna il lunedì della stessa settimana (ISO week)
+  const d = new Date(iso);
+  const day = d.getDay(); // 0=Dom, 1=Lun, ...
+  const diff = day === 0 ? -6 : 1 - day; // se domenica torna indietro di 6, altrimenti porta a lun
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+async function computeDayTotalsKcal(date) {
+  const d = await sg(`diary:${state.user.userId}:${date}`);
+  if (!d) return 0;
+  let total = 0;
+  for (const meal of ['breakfast','lunch','dinner','snack']) {
+    for (const item of (d[meal] || [])) {
+      total += (item.kcal || 0) * (item.grams || 0) / 100;
+    }
+  }
+  return total;
+}
+
+async function computeWeekSummary(anyDateInWeek) {
+  // Restituisce: { from, to, days: [{date, kcal, hasData}], totalKcal, daysWithData,
+  //               goalSum, deltaTotal, avgDelta }
+  const monday = getMondayOfWeek(anyDateInWeek);
+  const days = [];
+  let totalKcal = 0;
+  let daysWithData = 0;
+  let goalSum = 0;
+  for (let i = 0; i < 7; i++) {
+    const date = shiftDate(monday, i);
+    const goals = getGoalsForDate(date);
+    const kcal = await computeDayTotalsKcal(date);
+    const hasData = kcal > 0;
+    days.push({ date, kcal, hasData, goalKcal: goals.calories || 0 });
+    if (hasData) {
+      totalKcal += kcal;
+      daysWithData++;
+    }
+    goalSum += (goals.calories || 0);
+  }
+  const sunday = shiftDate(monday, 6);
+  return {
+    from: monday,
+    to: sunday,
+    days,
+    totalKcal,
+    daysWithData,
+    goalSum,
+    deltaTotal: totalKcal - goalSum, // positivo = eccesso, negativo = difetto
+  };
+}
+
+async function openCalendarSheet() {
+  // ±DIARY_RETENTION_DAYS giorni dal today, ma considera la finestra reale di retention
+  const today = todayISO();
+  const todayMs = new Date(today).getTime();
+  const cutoffMs = todayMs - (DIARY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+
+  // Mostriamo le 4 settimane che contengono i giorni navigabili (la corrente + ~3 indietro)
+  // Calcolo lunedì della settimana di today, poi mostro 4 settimane: 3 indietro + corrente
+  const currentMonday = getMondayOfWeek(today);
+  const weeks = [];
+  for (let w = 3; w >= 0; w--) {
+    const monday = shiftDate(currentMonday, -7 * w);
+    weeks.push(monday);
+  }
+
+  // Calcola totali per ogni giorno (per badge dei kcal e dot indicator)
+  const dailyTotals = {};
+  for (const monday of weeks) {
+    for (let i = 0; i < 7; i++) {
+      const date = shiftDate(monday, i);
+      dailyTotals[date] = await computeDayTotalsKcal(date);
+    }
+  }
+
+  // Riepilogo della settimana SELEZIONATA (quella di state.date)
+  const summary = await computeWeekSummary(state.date);
+
+  const monthLabels = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+  const dayHead = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+
+  function dateMs(iso) { return new Date(iso).getTime(); }
+  function isInRetention(iso) {
+    const ms = dateMs(iso);
+    return ms >= cutoffMs && ms <= todayMs;
+  }
+  function fmtMonth(iso) {
+    const m = parseInt(iso.slice(5,7), 10) - 1;
+    return monthLabels[m] || '';
+  }
+  function fmtDay(iso) {
+    return parseInt(iso.slice(8,10), 10);
+  }
+
+  let weeksHtml = '';
+  for (const monday of weeks) {
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const date = shiftDate(monday, i);
+      const isToday = date === today;
+      const isSelected = date === state.date;
+      const inRange = isInRetention(date);
+      const kcal = dailyTotals[date] || 0;
+      const cls = ['cal-cell'];
+      if (isToday) cls.push('cal-today');
+      if (isSelected) cls.push('cal-selected');
+      if (!inRange) cls.push('cal-disabled');
+      days.push(`
+        <button class="${cls.join(' ')}" ${inRange ? `data-cal-pick="${date}"` : 'disabled'}>
+          <div>${fmtDay(date)}</div>
+          <div class="cal-month">${fmtMonth(date)}</div>
+          ${kcal > 0 ? '<div class="cal-dot"></div>' : ''}
+        </button>
+      `);
+    }
+    weeksHtml += `<div class="cal-grid">${days.join('')}</div>`;
+  }
+
+  // Riepilogo settimana
+  const sumPDate = (() => {
+    const fromD = parseInt(summary.from.slice(8,10), 10);
+    const toD = parseInt(summary.to.slice(8,10), 10);
+    const fromM = monthLabels[parseInt(summary.from.slice(5,7), 10) - 1];
+    const toM = monthLabels[parseInt(summary.to.slice(5,7), 10) - 1];
+    return fromM === toM ? `${fromD}–${toD} ${toM}` : `${fromD} ${fromM} – ${toD} ${toM}`;
+  })();
+  const goalAvgPerDay = summary.daysWithData > 0
+    ? summary.days.filter(d => d.hasData).reduce((acc, d) => acc + d.goalKcal, 0) / summary.daysWithData
+    : 0;
+  const consumedAvgPerDay = summary.daysWithData > 0 ? summary.totalKcal / summary.daysWithData : 0;
+  const avgDelta = consumedAvgPerDay - goalAvgPerDay;
+  const deltaSign = summary.deltaTotal > 0 ? '+' : '';
+  const deltaColor = Math.abs(summary.deltaTotal) < 100 ? 'var(--text-2)' : (summary.deltaTotal > 0 ? 'var(--warning, #fb0)' : '#5cf');
+  const deltaLabel = summary.deltaTotal > 0 ? 'in eccesso' : (summary.deltaTotal < 0 ? 'in difetto' : 'in linea');
+  const noGoal = summary.goalSum === 0;
+
+  const summaryHtml = `
+    <div class="cal-week-summary">
+      <div style="font-size:11px;color:var(--text-3);font-weight:600;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px">Riepilogo settimana ${esc(sumPDate)}</div>
+      ${summary.daysWithData === 0 ? `
+        <div style="font-size:13px;color:var(--text-2);padding:6px 0">Nessun dato per questa settimana</div>
+      ` : noGoal ? `
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+          <div style="font-size:13px;color:var(--text-2)">Calorie totali</div>
+          <div style="font-size:18px;font-weight:700">${round(summary.totalKcal)}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-3)">${summary.daysWithData}/7 giorni con dati. Imposta un obiettivo in Profilo per vedere il delta.</div>
+      ` : `
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+          <div style="font-size:13px;color:var(--text-2)">Calorie totali</div>
+          <div style="font-size:18px;font-weight:700">${round(summary.totalKcal)} <span style="font-size:13px;color:var(--text-3);font-weight:500">/ ${round(summary.goalSum)}</span></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+          <div style="font-size:13px;color:var(--text-2)">${esc(deltaLabel)}</div>
+          <div style="font-size:16px;font-weight:700;color:${deltaColor}">${deltaSign}${round(summary.deltaTotal)} kcal</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--text-3);padding-top:8px;border-top:1px solid var(--border)">
+          <div>Media giornaliera: ${round(consumedAvgPerDay)} kcal</div>
+          <div>${summary.daysWithData}/7 giorni</div>
+        </div>
+      `}
+    </div>
+  `;
+
+  const html = `
+    <h2 class="sheet-title">Calendario</h2>
+    <p class="sheet-sub">Tap su un giorno per visualizzarlo. Disponibili gli ultimi ${DIARY_RETENTION_DAYS} giorni.</p>
+
+    <div class="cal-grid">
+      ${dayHead.map(d => `<div class="cal-head">${d}</div>`).join('')}
+    </div>
+    ${weeksHtml}
+
+    ${summaryHtml}
+
+    <button class="btn btn-secondary" id="cal-jump-today">Vai a oggi</button>
+  `;
+  openSheet(html);
+
+  document.querySelectorAll('[data-cal-pick]').forEach(b => {
+    b.onclick = async () => {
+      const d = b.dataset.calPick;
+      state.date = d;
+      await loadDiary(state.date);
+      closeSheet();
+      render();
+    };
+  });
+  const jumpToday = document.getElementById('cal-jump-today');
+  if (jumpToday) jumpToday.onclick = async () => {
+    state.date = todayISO();
+    await loadDiary(state.date);
+    closeSheet();
+    render();
+  };
+}
+
+async function populateWeekSummaryCard() {
+  const el = document.getElementById('week-summary-card');
+  if (!el) return;
+  try {
+    const summary = await computeWeekSummary(state.date);
+    const monthLabels = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+    const fromD = parseInt(summary.from.slice(8,10), 10);
+    const toD = parseInt(summary.to.slice(8,10), 10);
+    const fromM = monthLabels[parseInt(summary.from.slice(5,7), 10) - 1];
+    const toM = monthLabels[parseInt(summary.to.slice(5,7), 10) - 1];
+    const range = fromM === toM ? `${fromD}–${toD} ${toM}` : `${fromD} ${fromM} – ${toD} ${toM}`;
+
+    if (summary.daysWithData === 0) {
+      el.innerHTML = `
+        <div style="font-size:11px;color:var(--text-3);font-weight:600;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Lun – Dom · ${esc(range)}</div>
+        <div style="font-size:13px;color:var(--text-2)">Nessun dato per questa settimana</div>
+      `;
+      return;
+    }
+    if (summary.goalSum === 0) {
+      el.innerHTML = `
+        <div style="font-size:11px;color:var(--text-3);font-weight:600;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Lun – Dom · ${esc(range)}</div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+          <div style="font-size:13px;color:var(--text-2)">Calorie totali</div>
+          <div style="font-size:20px;font-weight:700">${round(summary.totalKcal)}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);line-height:1.4">${summary.daysWithData}/7 giorni con dati. Imposta un obiettivo in Profilo per vedere il delta settimanale.</div>
+      `;
+      return;
+    }
+    const consumedAvgPerDay = summary.totalKcal / summary.daysWithData;
+    const deltaSign = summary.deltaTotal > 0 ? '+' : '';
+    const deltaColor = Math.abs(summary.deltaTotal) < 100 ? 'var(--text-2)' : (summary.deltaTotal > 0 ? '#fb0' : '#5cf');
+    const deltaLabel = summary.deltaTotal > 0 ? 'eccesso' : (summary.deltaTotal < 0 ? 'difetto' : 'in linea');
+
+    el.innerHTML = `
+      <div style="font-size:11px;color:var(--text-3);font-weight:600;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px">Lun – Dom · ${esc(range)}</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+        <div style="font-size:13px;color:var(--text-2)">Assunte</div>
+        <div style="font-size:18px;font-weight:700">${round(summary.totalKcal)} <span style="font-size:13px;color:var(--text-3);font-weight:500">/ ${round(summary.goalSum)}</span></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+        <div style="font-size:13px;color:var(--text-2)">${esc(deltaLabel)}</div>
+        <div style="font-size:17px;font-weight:700;color:${deltaColor}">${deltaSign}${round(summary.deltaTotal)} kcal</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--text-3);padding-top:10px;border-top:1px solid var(--border)">
+        <div>Media: ${round(consumedAvgPerDay)} kcal/g</div>
+        <div>${summary.daysWithData}/7 giorni</div>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div style="font-size:13px;color:var(--text-3)">Errore nel calcolo: ${esc(e.message || 'unknown')}</div>`;
+  }
+}
+
 function openTemplatesSheet(selectMealTarget = null) {
   const list = state.templates;
   const html = `
@@ -4336,7 +4872,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.9.1';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -5842,6 +6378,15 @@ function bindApp() {
     };
   });
 
+  // open calendar on date label tap
+  const calBtn = document.querySelector('[data-open-calendar]');
+  if (calBtn) calBtn.onclick = () => openCalendarSheet();
+
+  // populate week summary on today tab
+  if (state.tab === 'today') {
+    populateWeekSummaryCard().catch(e => dlog('week summary FAIL: ' + e.message));
+  }
+
   // food delete
   document.querySelectorAll('[data-del]').forEach(b => {
     b.onclick = async (e) => {
@@ -5966,6 +6511,17 @@ function bindSearchResults() {
     el.onclick = () => {
       const f = state.searchResults.find(x => String(x.id) === el.dataset.pick);
       if (f) openAddFood(f, state.targetMeal);
+    };
+  });
+  document.querySelectorAll('[data-pick-tpl]').forEach(el => {
+    el.onclick = async () => {
+      const t = (state.searchTemplateResults || []).find(x => x.id === el.dataset.pickTpl);
+      if (!t) return;
+      await applyTemplate(t, state.targetMeal);
+      toast(`"${t.name}" aggiunto a ${({breakfast:'Colazione',lunch:'Pranzo',dinner:'Cena',snack:'Spuntino'})[state.targetMeal] || 'pasto'}`);
+      // Torna a Oggi per vedere il risultato
+      state.tab = 'today';
+      render();
     };
   });
   const retry = document.getElementById('search-retry');
