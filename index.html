@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.9.7 -->
+<!-- NUTRILOG_VERSION: 1.9.8 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -3558,84 +3558,94 @@ async function startScanner() {
   }
   dlog('SCAN: step 5 OK - <video> pronto');
 
-  // STEP 6 — Apri la fotocamera
+  // STEP 6 — Apri la fotocamera manualmente con getUserMedia
   try {
-    // Constraints per camera: chiediamo back camera + autofocus continuo + HD
-    // facingMode 'environment' = camera posteriore (più affidabile di deviceId su iOS)
-    // focusMode 'continuous' = autofocus attivo (CRITICAL su iOS che default è fisso)
-    // height/width target HD per dettaglio sufficiente sui barcode
     const constraints = {
       audio: false,
       video: {
         facingMode: { ideal: 'environment' },
         width: { ideal: 1920 },
         height: { ideal: 1080 },
-        // advanced constraints per autofocus su iOS Safari
         advanced: [
           { focusMode: 'continuous' },
-          { focusMode: 'auto' },
         ],
       },
     };
 
-    dlog('SCAN: step 6b - decodeFromConstraints (autofocus + HD)...');
-    await reader.decodeFromConstraints(constraints, video, (result, err, controls) => {
-      if (result) {
-        const code = result.getText();
-        dlog('SCAN: DECODED ' + code);
-        stopScanner();
-        handleBarcodeResult(code);
-      }
-    });
+    dlog('SCAN: step 6b - getUserMedia con HD + autofocus...');
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (e1) {
+      // Se HD non supportata, fallback a constraints minimi
+      dlog('SCAN: step 6b - HD failed, fallback minimi: ' + e1.message);
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' } },
+      });
+    }
 
-    // Forza autofocus continuo direttamente sulla traccia video, dopo che lo stream è attivo
+    video.srcObject = stream;
+    state.scanStream = stream;
+
+    // Aspetta che il video sia pronto e in riproduzione
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Video timeout')), 10000);
+      video.onloadedmetadata = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+    });
+    await video.play();
+    dlog(`SCAN: step 6c - video size ${video.videoWidth}x${video.videoHeight}`);
+
+    // STEP 7 — Decode loop manuale con timeIntervalBetweenScans piccolo per affidabilità
+    // ZXing decodeFromVideoElementContinuously è più affidabile su iOS
+    dlog('SCAN: step 6d - avvio decode loop...');
+    state.zxingDecodeActive = true;
+
+    const decodeLoop = async () => {
+      if (!state.zxingDecodeActive) return;
+      try {
+        const result = await reader.decodeOnceFromVideoElement(video);
+        if (result && state.zxingDecodeActive) {
+          const code = result.getText();
+          dlog('SCAN: DECODED ' + code);
+          state.zxingDecodeActive = false;
+          stopScanner();
+          handleBarcodeResult(code);
+          return;
+        }
+      } catch (err) {
+        // NotFoundException = nessun barcode in questo frame, ignora
+        if (err && err.name !== 'NotFoundException' && err.name !== 'NotFoundException2') {
+          dlog('SCAN: decode warn: ' + (err.name || '') + ' ' + (err.message || ''));
+        }
+      }
+      // Continua loop se ancora attivo
+      if (state.zxingDecodeActive) {
+        setTimeout(decodeLoop, 200);
+      }
+    };
+    decodeLoop();
+
+    // Apply autofocus dopo lo start
     setTimeout(() => {
       try {
-        const stream = video.srcObject;
-        if (stream && stream.getVideoTracks) {
-          const track = stream.getVideoTracks()[0];
-          if (track && track.applyConstraints) {
-            track.applyConstraints({
-              advanced: [
-                { focusMode: 'continuous' },
-                { focusDistance: 0.0 },
-              ],
-            }).then(() => {
-              dlog('SCAN: autofocus continuo attivato');
-            }).catch(e => {
-              dlog('SCAN: autofocus warn: ' + (e.message || 'non supportato'));
-            });
-            // Log delle capabilities della camera per debug
-            if (track.getCapabilities) {
-              const caps = track.getCapabilities();
-              dlog(`SCAN: camera caps - focus: ${caps.focusMode || 'N/A'}, zoom: ${caps.zoom ? 'sì' : 'no'}`);
-            }
+        const track = stream.getVideoTracks()[0];
+        if (track && track.applyConstraints) {
+          track.applyConstraints({
+            advanced: [{ focusMode: 'continuous' }],
+          }).then(() => dlog('SCAN: autofocus continuo OK'))
+            .catch(e => dlog('SCAN: autofocus warn: ' + (e.message || 'non supportato')));
+          if (track.getCapabilities) {
+            const caps = track.getCapabilities();
+            dlog(`SCAN: caps - focusMode: ${JSON.stringify(caps.focusMode || 'N/A')}`);
           }
         }
-      } catch (e) {
-        dlog('SCAN: autofocus setup warn: ' + e.message);
-      }
+      } catch (e) { dlog('SCAN: autofocus setup warn: ' + e.message); }
     }, 800);
 
-    // CRITICAL per iOS: chiama play() esplicitamente
-    try {
-      const playPromise = video.play();
-      if (playPromise && playPromise.catch) {
-        playPromise.catch(e => dlog('SCAN: video.play() warn: ' + e.message));
-      }
-      dlog('SCAN: step 6c - video.play() invocato');
-    } catch (e) {
-      dlog('SCAN: step 6c warn: ' + e.message);
-    }
-    // Verifica dopo un attimo se il video sta effettivamente mostrando frame
-    setTimeout(() => {
-      if (video.videoWidth === 0 || video.videoHeight === 0) {
-        dlog(`SCAN: step 6d WARN - video size ${video.videoWidth}x${video.videoHeight} (potrebbe essere nero)`);
-        video.play().catch(() => {});
-      } else {
-        dlog(`SCAN: step 6d OK - video size ${video.videoWidth}x${video.videoHeight}`);
-      }
-    }, 1000);
     state.zxingControls = reader;
     state.scanState = 'running';
     dlog('SCAN: step 6 OK - scanner running');
@@ -3717,11 +3727,31 @@ async function startScanner() {
 }
 
 function stopScanner() {
+  // Ferma il decode loop manuale
+  state.zxingDecodeActive = false;
+  // Reset ZXing reader
   try {
     if (state.zxingReader && typeof state.zxingReader.reset === 'function') {
       state.zxingReader.reset();
     }
   } catch (_) {}
+  // Ferma e libera lo stream camera (CRITICAL: senza questo, l'icona rossa iOS resta attiva)
+  try {
+    if (state.scanStream && state.scanStream.getTracks) {
+      state.scanStream.getTracks().forEach(track => {
+        try { track.stop(); } catch (_) {}
+      });
+    }
+  } catch (_) {}
+  // Distacca il video element
+  try {
+    const video = document.getElementById('scan-video');
+    if (video) {
+      video.pause();
+      video.srcObject = null;
+    }
+  } catch (_) {}
+  state.scanStream = null;
   state.zxingControls = null;
   state.zxingReader = null;
   if (state.scanState !== 'denied' && state.scanState !== 'manual' && state.scanState !== 'error') {
@@ -5115,7 +5145,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.9.7';
+const APP_VERSION = '1.9.8';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
