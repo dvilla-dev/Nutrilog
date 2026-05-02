@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.10.1 -->
+<!-- NUTRILOG_VERSION: 1.10.2 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -1180,8 +1180,8 @@
     font-size: 14px;
   }
 </style>
-<!-- ZXing barcode scanner library (caricato statico per affidabilità su iOS PWA) -->
-<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js" defer></script>
+<!-- html5-qrcode scanner library (più affidabile di ZXing su iOS PWA) -->
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
 </head>
 <body>
 <div id="app"></div>
@@ -2733,9 +2733,9 @@ async function boot() {
   // Pre-warm dello scanner: prova a caricare ZXing in background
   // così quando l'utente tappa Scan è già pronto.
   setTimeout(() => {
-    loadZxing()
-      .then(() => dlog('BOOT: ZXing pre-warmed'))
-      .catch(e => dlog('BOOT: ZXing pre-warm FAIL - ' + e.message));
+    loadScannerLib()
+      .then(() => dlog('BOOT: scanner pre-warmed'))
+      .catch(e => dlog('BOOT: scanner pre-warm FAIL - ' + e.message));
   }, 1000);
 }
 
@@ -2956,7 +2956,7 @@ function renderAppShell() {
   if (state.tab === 'today')   { header = renderHeader('Diario'); content = renderToday(); }
   if (state.tab === 'search')  { header = renderHeader('Cerca alimenti'); content = renderSearch(); }
   if (state.tab === 'photo')   { header = renderHeader('Foto AI'); content = renderPhotoTab(); }
-  if (state.tab === 'scan')    { header = renderHeader('Scansiona barcode'); content = renderScan(); }
+  if (state.tab === 'scan')    { header = renderHeader('Codice prodotto'); content = renderCodeTab(); }
   if (state.tab === 'profile') { header = renderHeader('Profilo'); content = renderProfile(); }
   return `${header}<div class="screen" id="screen">${content}</div>${tabbar}`;
 }
@@ -2972,7 +2972,7 @@ function renderTabbar() {
     ${tab('today', 'Oggi', I.home)}
     ${tab('search', 'Cerca', I.search)}
     ${tab('photo', 'Foto', I.camera)}
-    ${tab('scan', 'Scan', I.scan)}
+    ${tab('scan', 'Codice', I.scan)}
     ${tab('profile', 'Profilo', I.user)}
   </div>`;
 }
@@ -3273,11 +3273,9 @@ function renderPhotoTab() {
 /* ─── SCAN (legacy, kept for compat) ─────────────────────── */
 function renderScan() {
   if (state.scanState === 'starting') {
-    // IMPORTANTE: il <video> deve essere già nel DOM quando startScanner() lo cerca.
-    // Mostriamo uno spinner overlay sopra al video container.
     return `
       <div class="scan-wrap">
-        <video id="scan-video" playsinline muted autoplay></video>
+        <div id="reader" style="width:100%;height:100%;background:#000"></div>
         <div class="scan-overlay" style="background:rgba(0,0,0,0.5)">
           <div style="display:flex;flex-direction:column;align-items:center;gap:14px">
             <div class="spinner"></div>
@@ -3377,8 +3375,8 @@ function renderScan() {
   }
   return `
     <div class="scan-wrap">
-      <video id="scan-video" playsinline muted autoplay></video>
-      <div class="scan-overlay">
+      <div id="reader" style="width:100%;height:100%;background:#000"></div>
+      <div class="scan-overlay" style="pointer-events:none">
         <div class="scan-frame"><div class="scan-laser"></div></div>
       </div>
     </div>
@@ -3389,51 +3387,36 @@ function renderScan() {
   `;
 }
 
-/* ─── ZXING SCANNER ───────────────────────────────────────
-   ZXing è caricato staticamente nell'<head> con tag <script defer>.
-   Qui aspettiamo solo che window.ZXing sia disponibile.
+/* ─── HTML5-QRCODE SCANNER ────────────────────────────────
+   Usiamo html5-qrcode (più affidabile di ZXing su iOS PWA).
+   Carica tutto da solo: camera, decode, render. Noi gli
+   diamo solo un container <div id="reader"> e i constraints.
    ──────────────────────────────────────────────────────── */
-const ZXING_READY_TIMEOUT = 15000;
+const HQR_READY_TIMEOUT = 15000;
 
-function loadZxing() {
-  // Se già caricato, restituisci immediatamente
-  if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
-    return Promise.resolve(window.ZXing);
-  }
-  // Altrimenti polla a intervalli regolari fino al timeout
+function loadScannerLib() {
+  if (window.Html5Qrcode) return Promise.resolve(window.Html5Qrcode);
   return new Promise((resolve, reject) => {
     const start = Date.now();
-    let elapsed = 0;
     const checkInterval = setInterval(() => {
-      elapsed = Date.now() - start;
-      if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
+      if (window.Html5Qrcode) {
         clearInterval(checkInterval);
-        dlog('ZXing pronto dopo ' + elapsed + 'ms');
-        resolve(window.ZXing);
+        dlog('Html5Qrcode pronto dopo ' + (Date.now() - start) + 'ms');
+        resolve(window.Html5Qrcode);
         return;
       }
-      if (elapsed > ZXING_READY_TIMEOUT) {
+      if (Date.now() - start > HQR_READY_TIMEOUT) {
         clearInterval(checkInterval);
-        // Tentativo di fallback: inietta script dinamicamente come ultima risorsa
-        dlog('ZXing static timeout, fallback dynamic injection...');
+        // Fallback: inietta dinamicamente
         const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
-        const fallbackTimer = setTimeout(() => {
-          reject(new Error('Caricamento ZXing fallito (timeout). Controlla la connessione e riprova.'));
-        }, 10000);
+        script.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+        const tmr = setTimeout(() => reject(new Error('Timeout caricamento scanner')), 10000);
         script.onload = () => {
-          clearTimeout(fallbackTimer);
-          if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
-            dlog('ZXing fallback dynamic OK');
-            resolve(window.ZXing);
-          } else {
-            reject(new Error('ZXing caricato ma BrowserMultiFormatReader mancante'));
-          }
+          clearTimeout(tmr);
+          if (window.Html5Qrcode) resolve(window.Html5Qrcode);
+          else reject(new Error('Html5Qrcode non disponibile dopo load'));
         };
-        script.onerror = () => {
-          clearTimeout(fallbackTimer);
-          reject(new Error('Impossibile caricare ZXing dal CDN. Controlla la connessione.'));
-        };
+        script.onerror = () => { clearTimeout(tmr); reject(new Error('Download scanner fallito')); };
         document.head.appendChild(script);
       }
     }, 100);
@@ -3445,362 +3428,128 @@ async function startScanner() {
   state.scanState = 'starting';
   state.scanError = '';
   render();
-  // Aspetta che il browser abbia committato il DOM prima di cercare il <video>
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-  dlog('SCAN: starting...');
+  dlog('SCAN: starting (html5-qrcode)...');
 
-  // STEP 1 — ZXing pronto?
-  let zxing;
+  // Aspetta lib
+  let Html5Qrcode;
   try {
-    dlog('SCAN: step 1 - waiting for ZXing...');
-    zxing = await loadZxing();
-    dlog('SCAN: step 1 OK - ZXing loaded');
+    Html5Qrcode = await loadScannerLib();
+    dlog('SCAN: step 1 OK - lib loaded');
   } catch (e) {
     dlog('SCAN: step 1 FAIL - ' + e.message);
-    state.scanError = '[ZXing] ' + (e.message || 'caricamento fallito');
+    state.scanError = '[Lib] ' + e.message;
     state.scanState = 'error';
     render();
     return;
   }
 
-  // STEP 2 — Browser supporta getUserMedia?
+  // Verifica HTTPS + getUserMedia
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    dlog('SCAN: step 2 FAIL - getUserMedia non disponibile');
-    state.scanError = '[getUserMedia] Il browser non supporta accesso fotocamera. Su iOS, lo scanner richiede Safari come PWA installata dalla home.';
+    state.scanError = '[getUserMedia] Camera non supportata su questo browser';
     state.scanState = 'error';
     render();
     return;
   }
-  dlog('SCAN: step 2 OK - getUserMedia disponibile');
-
-  // STEP 3 — Verifica HTTPS (richiesto da iOS per camera)
   if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-    dlog('SCAN: step 3 FAIL - non-HTTPS context');
-    state.scanError = '[HTTPS] La fotocamera richiede HTTPS. Controlla l\'URL.';
+    state.scanError = '[HTTPS] La fotocamera richiede HTTPS';
     state.scanState = 'error';
     render();
     return;
   }
-  dlog('SCAN: step 3 OK - HTTPS context');
+  dlog('SCAN: step 2 OK - getUserMedia + HTTPS');
 
-  // STEP 4 — Crea il reader
-  const hints = new Map();
-  const F = zxing.BarcodeFormat;
-  if (F && zxing.DecodeHintType) {
-    const formats = [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.QR_CODE].filter(x => x !== undefined);
-    if (formats.length) {
-      hints.set(zxing.DecodeHintType.POSSIBLE_FORMATS, formats);
-      hints.set(zxing.DecodeHintType.TRY_HARDER, true);
-    }
+  // Aspetta che il render abbia committato il DOM
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  // Attendi il container #reader (creato dal template renderScan)
+  let container = null;
+  for (let i = 0; i < 25; i++) {
+    container = document.getElementById('reader');
+    if (container) break;
+    if (i === 5) { dlog('SCAN: step 3 - forcing re-render'); render(); }
+    await new Promise(r => setTimeout(r, 200));
   }
-  let reader;
+  if (!container) {
+    dlog('SCAN: step 3 FAIL - container #reader non trovato');
+    state.scanError = '[Container] #reader mancante. Tap "Riprova"';
+    state.scanState = 'error';
+    render();
+    return;
+  }
+  dlog('SCAN: step 3 OK - container pronto');
+
+  // Crea istanza scanner
+  let scanner;
   try {
-    reader = new zxing.BrowserMultiFormatReader(hints, 200);
-    dlog('SCAN: step 4 OK - reader creato');
+    scanner = new Html5Qrcode('reader', { verbose: false });
+    state.hqrScanner = scanner;
+    dlog('SCAN: step 4 OK - scanner creato');
   } catch (e) {
     dlog('SCAN: step 4 FAIL - ' + e.message);
-    state.scanError = '[Reader] ' + (e.message || 'init fallita');
+    state.scanError = '[Scanner] ' + e.message;
     state.scanState = 'error';
     render();
     return;
   }
-  state.zxingReader = reader;
 
-  // STEP 5 — Trova o crea il <video> nel container
-  // Cerco il video esistente; se non c'è (race condition iOS), lo creo io
-  let video = document.getElementById('scan-video');
-  let createdVideo = false;
-  if (!video) {
-    dlog('SCAN: step 5 - <video> non trovato, lo creo');
-    video = document.createElement('video');
-    video.id = 'scan-video';
-    // CRITICAL per iOS Safari: questi attributi DEVONO essere boolean setAttribute,
-    // non property assignment. iOS richiede playsinline e muted.
-    video.setAttribute('playsinline', '');
-    video.setAttribute('webkit-playsinline', '');
-    video.setAttribute('muted', '');
-    video.setAttribute('autoplay', '');
-    video.muted = true;
-    video.playsInline = true;
-    video.autoplay = true;
-    createdVideo = true;
-  } else {
-    // Anche se trovato, garantisce gli attributi iOS
-    video.setAttribute('playsinline', '');
-    video.setAttribute('webkit-playsinline', '');
-    video.muted = true;
-    video.playsInline = true;
-  }
-  // Cerca il container scan-wrap
-  const wrap = document.querySelector('.scan-wrap');
-  if (createdVideo && wrap && !wrap.contains(video)) {
-    wrap.insertBefore(video, wrap.firstChild);
-    dlog('SCAN: step 5 - <video> creato e inserito in .scan-wrap');
-  } else if (createdVideo && !wrap) {
-    // Container ancora non c'è - aspetta un po' e riprova
-    dlog('SCAN: step 5 - .scan-wrap non trovato, attendo render...');
-    for (let i = 0; i < 10; i++) {
-      await new Promise(r => setTimeout(r, 100));
-      const w = document.querySelector('.scan-wrap');
-      if (w) {
-        w.insertBefore(video, w.firstChild);
-        dlog('SCAN: step 5 - <video> inserito dopo attesa');
-        break;
-      }
-    }
-    if (!document.querySelector('.scan-wrap')) {
-      dlog('SCAN: step 5 FAIL - .scan-wrap mai trovato');
-      state.scanError = '[Container] Schermata scanner non pronta. Tappa Scan di nuovo.';
-      state.scanState = 'error';
-      render();
-      return;
-    }
-  }
-  dlog('SCAN: step 5 OK - <video> pronto');
+  // Config: solo formati barcode prodotti retail, alta risoluzione
+  const F = window.Html5QrcodeSupportedFormats || {};
+  const formats = [
+    F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39
+  ].filter(x => x !== undefined);
 
-  // STEP 6 — Apri la fotocamera manualmente con getUserMedia
+  const config = {
+    fps: 10,
+    qrbox: { width: 280, height: 140 },
+    aspectRatio: 1.333334,
+    formatsToSupport: formats.length ? formats : undefined,
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    videoConstraints: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+    },
+  };
+
+  const onSuccess = (decodedText, decodedResult) => {
+    dlog('SCAN: DECODED ' + decodedText);
+    stopScanner();
+    handleBarcodeResult(decodedText);
+  };
+  const onFailure = (errStr) => {
+    // Frame senza barcode: ignora silenziosamente
+  };
+
+  // Avvia
   try {
-    const constraints = {
-      audio: false,
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        advanced: [
-          { focusMode: 'continuous' },
-        ],
-      },
-    };
-
-    dlog('SCAN: step 6b - getUserMedia con HD + autofocus...');
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (e1) {
-      // Se HD non supportata, fallback a constraints minimi
-      dlog('SCAN: step 6b - HD failed, fallback minimi: ' + e1.message);
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: { ideal: 'environment' } },
-      });
-    }
-
-    video.srcObject = stream;
-    state.scanStream = stream;
-
-    // Aspetta che il video sia pronto e in riproduzione
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Video timeout')), 10000);
-      video.onloadedmetadata = () => {
-        clearTimeout(timeout);
-        resolve();
-      };
-    });
-    await video.play();
-    dlog(`SCAN: step 6c - video size ${video.videoWidth}x${video.videoHeight}`);
-
-    // STEP 7 — Decode loop manuale: cattura frame video → canvas → decode
-    // Questo approccio è il più affidabile su iOS Safari perché bypassa
-    // i loop interni di ZXing che si bloccano in PWA standalone.
-    dlog('SCAN: step 6d - avvio decode loop (canvas-based)...');
-    state.zxingDecodeActive = true;
-    state._scanErrCount = 0;
-
-    // Canvas di lavoro per catturare frame del video
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-    // Detect API ZXing disponibili. PREFERIAMO l'API base sincrona
-    // (BinaryBitmap) perché decodeFromImageElement è async/Promise.
-    // Su iOS, HTMLCanvasElementLuminanceSource fallisce con "Type error":
-    // costruiamo manualmente il LuminanceSource dai pixel grezzi.
-    const Z = window.ZXing;
-    const hasRGBSource = !!(Z && Z.RGBLuminanceSource && Z.HybridBinarizer && Z.BinaryBitmap && typeof reader.decode === 'function');
-    const hasCanvasSource = !!(Z && Z.HTMLCanvasElementLuminanceSource && Z.HybridBinarizer && Z.BinaryBitmap && typeof reader.decode === 'function');
-    const hasDecodeCanvas = typeof reader.decodeFromCanvas === 'function';
-    dlog(`SCAN: API check - rgb:${hasRGBSource} canvasSource:${hasCanvasSource} decodeCanvas:${hasDecodeCanvas}`);
-
-    if (!hasRGBSource && !hasCanvasSource && !hasDecodeCanvas) {
-      dlog('SCAN: FATAL - nessun metodo decode disponibile in ZXing');
-      state.scanError = 'ZXing API mancante: ricarica la pagina o aggiorna versione';
-      state.scanState = 'error';
-      stopScanner();
-      render();
-      return;
-    }
-
-    const decodeFrame = (cv) => {
-      // PREFERITO: RGBLuminanceSource manuale (immune a iOS Safari bugs)
-      if (hasRGBSource) {
-        const w = cv.width, h = cv.height;
-        const imageData = ctx.getImageData(0, 0, w, h);
-        const data = imageData.data; // Uint8ClampedArray RGBA
-        // Converti RGBA → luminance grayscale (8 bit per pixel)
-        // ZXing RGBLuminanceSource accetta un array di luminance values
-        const luminances = new Uint8ClampedArray(w * h);
-        for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-          // Formula standard ITU-R BT.601 luma
-          luminances[j] = (data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114) | 0;
-        }
-        const luminance = new Z.RGBLuminanceSource(luminances, w, h);
-        const binarizer = new Z.HybridBinarizer(luminance);
-        const binaryBitmap = new Z.BinaryBitmap(binarizer);
-        return reader.decode(binaryBitmap);
-      }
-      // Fallback 1: Canvas-based source (può fallire su iOS)
-      if (hasCanvasSource) {
-        const luminance = new Z.HTMLCanvasElementLuminanceSource(cv);
-        const binarizer = new Z.HybridBinarizer(luminance);
-        const binaryBitmap = new Z.BinaryBitmap(binarizer);
-        return reader.decode(binaryBitmap);
-      }
-      // Fallback 2: decodeFromCanvas se disponibile
-      return reader.decodeFromCanvas(cv);
-    };
-
-    const decodeLoop = async () => {
-      if (!state.zxingDecodeActive) return;
-      try {
-        // Cattura frame solo se il video è effettivamente in riproduzione
-        if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-          // Adegua dimensioni canvas al video (solo se cambiano)
-          if (canvas.width !== video.videoWidth) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-          }
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          // Prova a decodificare dal canvas
-          try {
-            let result = decodeFrame(canvas);
-            // Se per qualche motivo il decoder restituisce una Promise, await
-            if (result && typeof result.then === 'function') {
-              result = await result;
-            }
-            if (result && state.zxingDecodeActive) {
-              const code = result.getText ? result.getText() : (result.text || String(result));
-              // Sanity check: scarta risultati che non sono codici a barre validi
-              if (!code || code === '[object Promise]' || code === '[object Object]' || code.length < 4) {
-                dlog('SCAN: invalid result: ' + code);
-                throw new Error('Invalid decode result');
-              }
-              dlog('SCAN: DECODED ' + code);
-              state.zxingDecodeActive = false;
-              stopScanner();
-              handleBarcodeResult(code);
-              return;
-            }
-          } catch (err) {
-            // NotFoundException = nessun barcode visibile in questo frame, NORMALE
-            const errName = err && err.name || '';
-            const errMsg = err && err.message || '';
-            if (errName !== 'NotFoundException' && errName !== 'NotFoundException2' && errName !== 'ChecksumException' && errName !== 'FormatException' && errName !== 'NotFoundException3') {
-              // Log solo i primi N errori "veri" per non riempire il log
-              state._scanErrCount = (state._scanErrCount || 0) + 1;
-              if (state._scanErrCount <= 3) {
-                dlog('SCAN: decode err [' + state._scanErrCount + ']: ' + errName + ' / ' + errMsg + ' / canvas ' + canvas.width + 'x' + canvas.height);
-              }
-            }
-          }
-        }
-      } catch (e) {
-        dlog('SCAN: loop err: ' + (e.message || e));
-      }
-      // Continua loop se ancora attivo (200ms per ridurre carico CPU)
-      if (state.zxingDecodeActive) {
-        setTimeout(decodeLoop, 200);
-      }
-    };
-    decodeLoop();
-
-    // Apply autofocus dopo lo start
+    dlog('SCAN: step 5 - scanner.start...');
+    await scanner.start({ facingMode: { ideal: 'environment' } }, config, onSuccess, onFailure);
+    state.scanState = 'running';
+    dlog('SCAN: step 5 OK - scanner running');
+    // Tap-to-focus (best effort)
     setTimeout(() => {
       try {
-        const track = stream.getVideoTracks()[0];
-        if (track && track.applyConstraints) {
-          track.applyConstraints({
-            advanced: [{ focusMode: 'continuous' }],
-          }).then(() => dlog('SCAN: autofocus continuo OK'))
-            .catch(e => dlog('SCAN: autofocus warn: ' + (e.message || 'non supportato')));
-          if (track.getCapabilities) {
-            const caps = track.getCapabilities();
-            dlog(`SCAN: caps - focusMode: ${JSON.stringify(caps.focusMode || 'N/A')}`);
+        const video = document.querySelector('#reader video');
+        if (video && video.srcObject) {
+          const track = video.srcObject.getVideoTracks()[0];
+          if (track && track.applyConstraints) {
+            track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] })
+              .then(() => dlog('SCAN: autofocus continuo OK'))
+              .catch(e => dlog('SCAN: autofocus warn: ' + e.message));
           }
         }
-      } catch (e) { dlog('SCAN: autofocus setup warn: ' + e.message); }
+      } catch (e) {}
     }, 800);
-
-    state.zxingControls = reader;
-    state.scanState = 'running';
-    dlog('SCAN: step 6 OK - scanner running');
-    // CRITICAL: NON chiamiamo render() perché distruggerebbe il <video>
-    // attivo (innerHTML rimuove tutti gli elementi). Invece nascondiamo
-    // manualmente l'overlay "Avvio scanner..." e mostriamo l'interfaccia
-    // di scansione.
-    const startingOverlay = document.querySelector('.scan-wrap .scan-overlay');
-    if (startingOverlay) {
-      startingOverlay.style.background = 'transparent';
-      startingOverlay.innerHTML = '<div class="scan-frame" id="scan-frame-tap"><div class="scan-laser"></div><div class="scan-tap-hint">Tocca per mettere a fuoco</div></div>';
-      // Tap-to-focus: forza un re-apply dei constraints di focus quando l'utente tocca il frame
-      const frameEl = document.getElementById('scan-frame-tap');
-      if (frameEl) {
-        frameEl.style.pointerEvents = 'auto';
-        frameEl.style.cursor = 'pointer';
-        frameEl.addEventListener('click', () => {
-          try {
-            const stream = video.srcObject;
-            if (stream && stream.getVideoTracks) {
-              const track = stream.getVideoTracks()[0];
-              if (track && track.applyConstraints) {
-                // Trick: applica focus 'manual' poi torna a 'continuous' per forzare il re-focus
-                track.applyConstraints({
-                  advanced: [{ focusMode: 'manual', focusDistance: 0.3 }],
-                }).then(() => {
-                  setTimeout(() => {
-                    track.applyConstraints({
-                      advanced: [{ focusMode: 'continuous' }],
-                    }).catch(() => {});
-                  }, 100);
-                  dlog('SCAN: tap-to-focus triggered');
-                  // Feedback visivo: pulse del frame
-                  frameEl.classList.add('scan-frame-pulse');
-                  setTimeout(() => frameEl.classList.remove('scan-frame-pulse'), 500);
-                }).catch(e => dlog('SCAN: tap-focus warn: ' + e.message));
-              }
-            }
-          } catch (e) { dlog('SCAN: tap-focus error: ' + e.message); }
-        });
-      }
-    }
-    // Aggiungi il bottone "manuale" se non c'è già
-    const screen = document.getElementById('screen');
-    if (screen && !document.getElementById('to-manual')) {
-      const hint = document.createElement('div');
-      hint.className = 'scan-hint';
-      hint.textContent = 'Inquadra il codice a barre del prodotto';
-      const btnWrap = document.createElement('div');
-      btnWrap.style.padding = '0 var(--pad-lg)';
-      btnWrap.innerHTML = '<button class="btn btn-secondary" id="to-manual">Inserisci codice manualmente</button>';
-      screen.appendChild(hint);
-      screen.appendChild(btnWrap);
-      document.getElementById('to-manual').onclick = () => {
-        stopScanner();
-        state.scanState = 'manual';
-        render();
-      };
-    }
   } catch (err) {
-    const errName = err && err.name ? err.name : 'unknown';
-    const errMsg = err && err.message ? err.message : String(err);
-    dlog('SCAN: step 6 FAIL - ' + errName + ': ' + errMsg);
-    if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+    const errName = err && err.name || 'unknown';
+    const errMsg = err && err.message || String(err);
+    dlog('SCAN: step 5 FAIL - ' + errName + ': ' + errMsg);
+    if (/permiss|notallowed/i.test(errName + errMsg)) {
       state.scanError = 'Permesso fotocamera negato';
       state.scanState = 'denied';
-    } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
-      state.scanError = '[NotFound] Nessuna fotocamera trovata';
+    } else if (/notfound/i.test(errName + errMsg)) {
+      state.scanError = 'Nessuna fotocamera trovata';
       state.scanState = 'manual';
-    } else if (errName === 'NotReadableError' || errName === 'TrackStartError') {
-      state.scanError = '[NotReadable] Fotocamera occupata da un\'altra app. Chiudi le altre app e riprova.';
-      state.scanState = 'error';
     } else {
       state.scanError = '[' + errName + '] ' + errMsg;
       state.scanState = 'error';
@@ -3810,37 +3559,25 @@ async function startScanner() {
 }
 
 function stopScanner() {
-  // Ferma il decode loop manuale
-  state.zxingDecodeActive = false;
-  // Reset ZXing reader
   try {
-    if (state.zxingReader && typeof state.zxingReader.reset === 'function') {
-      state.zxingReader.reset();
+    if (state.hqrScanner) {
+      const sc = state.hqrScanner;
+      // stop() è async; lasciamo che pulisca in background
+      if (typeof sc.stop === 'function') {
+        sc.stop().then(() => {
+          try { sc.clear(); } catch (_) {}
+        }).catch(() => {
+          try { sc.clear(); } catch (_) {}
+        });
+      }
     }
   } catch (_) {}
-  // Ferma e libera lo stream camera (CRITICAL: senza questo, l'icona rossa iOS resta attiva)
-  try {
-    if (state.scanStream && state.scanStream.getTracks) {
-      state.scanStream.getTracks().forEach(track => {
-        try { track.stop(); } catch (_) {}
-      });
-    }
-  } catch (_) {}
-  // Distacca il video element
-  try {
-    const video = document.getElementById('scan-video');
-    if (video) {
-      video.pause();
-      video.srcObject = null;
-    }
-  } catch (_) {}
-  state.scanStream = null;
-  state.zxingControls = null;
-  state.zxingReader = null;
+  state.hqrScanner = null;
   if (state.scanState !== 'denied' && state.scanState !== 'manual' && state.scanState !== 'error') {
     state.scanState = 'idle';
   }
 }
+
 
 async function handleBarcodeResult(code) {
   state.scanState = 'lookup';
@@ -5228,7 +4965,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.10.1';
+const APP_VERSION = '1.10.2';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -5969,7 +5706,7 @@ function openFabMenu() {
     <div class="fab-menu" id="fab-menu">
       <button class="fab-menu-item" data-fab="quick"><span>Rapido · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.bolt}</span></button>
       <button class="fab-menu-item" data-fab="photo"><span>Foto AI · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.scan}</span></button>
-      <button class="fab-menu-item" data-fab="barcode"><span>Barcode · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.scan}</span></button>
+      <button class="fab-menu-item" data-fab="barcode"><span>Codice · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.scan}</span></button>
       <button class="fab-menu-item" data-fab="search"><span>Cerca · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.search}</span></button>
       <button class="fab-menu-item" data-fab="my"><span>I miei · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.box}</span></button>
     </div>
