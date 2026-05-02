@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.9.9 -->
+<!-- NUTRILOG_VERSION: 1.10.0 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -3609,31 +3609,33 @@ async function startScanner() {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    // Detect API ZXing disponibili (UMD v0.21.3 espone metodi diversi)
+    // Detect API ZXing disponibili. PREFERIAMO l'API base sincrona
+    // (BinaryBitmap) perché decodeFromImageElement è async/Promise e crea
+    // race conditions con il canvas drawing.
+    const Z = window.ZXing;
+    const hasBaseAPI = !!(Z && Z.HTMLCanvasElementLuminanceSource && Z.HybridBinarizer && Z.BinaryBitmap && typeof reader.decode === 'function');
     const hasDecodeCanvas = typeof reader.decodeFromCanvas === 'function';
-    const hasDecodeImage = typeof reader.decodeFromImageElement === 'function';
-    const hasDecodeImageData = typeof reader.decode === 'function';
-    dlog(`SCAN: API check - canvas:${hasDecodeCanvas} image:${hasDecodeImage} decode:${hasDecodeImageData}`);
+    dlog(`SCAN: API check - baseAPI:${hasBaseAPI} canvas:${hasDecodeCanvas}`);
+
+    if (!hasBaseAPI && !hasDecodeCanvas) {
+      dlog('SCAN: FATAL - nessun metodo decode sincrono disponibile in ZXing');
+      state.scanError = 'ZXing API mancante: ricarica la pagina o aggiorna versione';
+      state.scanState = 'error';
+      stopScanner();
+      render();
+      return;
+    }
 
     const decodeFrame = (cv) => {
-      // Prova in ordine i metodi disponibili
-      if (hasDecodeCanvas) {
-        return reader.decodeFromCanvas(cv);
-      }
-      if (hasDecodeImage) {
-        // decodeFromImageElement richiede un <img>, creiamo uno temporaneo
-        const tmpImg = new Image();
-        tmpImg.src = cv.toDataURL('image/png');
-        return reader.decodeFromImageElement(tmpImg);
-      }
-      // Ultimo fallback: usa l'API base con BinaryBitmap
-      if (window.ZXing && window.ZXing.HTMLCanvasElementLuminanceSource && window.ZXing.HybridBinarizer && window.ZXing.BinaryBitmap) {
-        const luminanceSource = new window.ZXing.HTMLCanvasElementLuminanceSource(cv);
-        const binarizer = new window.ZXing.HybridBinarizer(luminanceSource);
-        const binaryBitmap = new window.ZXing.BinaryBitmap(binarizer);
+      // Preferisci API base (sincrona, affidabile)
+      if (hasBaseAPI) {
+        const luminance = new Z.HTMLCanvasElementLuminanceSource(cv);
+        const binarizer = new Z.HybridBinarizer(luminance);
+        const binaryBitmap = new Z.BinaryBitmap(binarizer);
         return reader.decode(binaryBitmap);
       }
-      throw new Error('Nessun metodo decode disponibile in ZXing');
+      // Fallback: decodeFromCanvas se disponibile
+      return reader.decodeFromCanvas(cv);
     };
 
     const decodeLoop = async () => {
@@ -3649,9 +3651,18 @@ async function startScanner() {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           // Prova a decodificare dal canvas
           try {
-            const result = decodeFrame(canvas);
+            let result = decodeFrame(canvas);
+            // Se per qualche motivo il decoder restituisce una Promise, await
+            if (result && typeof result.then === 'function') {
+              result = await result;
+            }
             if (result && state.zxingDecodeActive) {
               const code = result.getText ? result.getText() : (result.text || String(result));
+              // Sanity check: scarta risultati che non sono codici a barre validi
+              if (!code || code === '[object Promise]' || code === '[object Object]' || code.length < 4) {
+                dlog('SCAN: invalid result: ' + code);
+                throw new Error('Invalid decode result');
+              }
               dlog('SCAN: DECODED ' + code);
               state.zxingDecodeActive = false;
               stopScanner();
@@ -5192,7 +5203,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.9.9';
+const APP_VERSION = '1.10.0';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
