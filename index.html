@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.11.1 -->
+<!-- NUTRILOG_VERSION: 1.13.0 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -754,6 +754,23 @@
     border-radius: 2px;
     margin: 0 auto 16px;
   }
+  .sheet-close {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: 0;
+    color: var(--text-2);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 6px 10px 6px 4px;
+    margin: -4px 0 10px -4px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  }
+  .sheet-close:active { background: var(--surface-2); transform: scale(0.97); }
+  .sheet-close svg { width: 18px; height: 18px; flex-shrink: 0; }
   .sheet-title {
     font-size: 18px;
     font-weight: 700;
@@ -3341,11 +3358,49 @@ function openSheet(html) {
   const portal = document.getElementById('portal');
   portal.innerHTML = `<div class="sheet-backdrop" id="backdrop"><div class="sheet" id="sheet">
     <div class="sheet-handle"></div>
+    <button class="sheet-close" id="sheet-close" aria-label="Chiudi">${I.left}<span>Indietro</span></button>
     ${html}
   </div></div>`;
   const backdrop = document.getElementById('backdrop');
+  const sheet = document.getElementById('sheet');
   backdrop.onclick = (e) => { if (e.target === backdrop) closeSheet(); };
-  document.getElementById('sheet').onclick = (e) => e.stopPropagation();
+  sheet.onclick = (e) => e.stopPropagation();
+  document.getElementById('sheet-close').onclick = () => closeSheet();
+
+  // Swipe-down per chiudere (gesto naturale iOS)
+  // Si attiva solo quando si trascina dall'alto del foglio
+  let touchStartY = 0;
+  let touchCurrentY = 0;
+  let dragging = false;
+  const handle = sheet.querySelector('.sheet-handle');
+  const closeBtn = document.getElementById('sheet-close');
+  const dragArea = [handle, closeBtn].filter(Boolean);
+  dragArea.forEach(el => {
+    el.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      touchStartY = e.touches[0].clientY;
+      touchCurrentY = touchStartY;
+      dragging = true;
+      sheet.style.transition = 'none';
+    }, { passive: true });
+  });
+  sheet.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    touchCurrentY = e.touches[0].clientY;
+    const dy = Math.max(0, touchCurrentY - touchStartY);
+    if (dy > 0) sheet.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  sheet.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    const dy = touchCurrentY - touchStartY;
+    sheet.style.transition = '';
+    if (dy > 80) {
+      closeSheet();
+    } else {
+      sheet.style.transform = '';
+    }
+  });
 }
 function closeSheet() {
   document.getElementById('portal').innerHTML = '';
@@ -3821,18 +3876,27 @@ function renderGoalsSheet() {
 }
 
 /* ─── CUSTOM FOODS SHEET ───────────────────────────────── */
-function openCustomFoodsSheet() {
-  const list = state.customFoods;
+function openCustomFoodsSheet(filter = '') {
+  const all = state.customFoods;
+  const fLow = stripAccents(filter.trim().toLowerCase());
+  const list = !fLow ? all : all.filter(f => {
+    const hay = stripAccents(((f.name || '') + ' ' + (f.brand || '')).toLowerCase());
+    return fLow.split(/\s+/).every(t => hay.includes(t));
+  });
   const html = `
     <h2 class="sheet-title">I miei alimenti</h2>
-    <p class="sheet-sub">Alimenti custom con i tuoi valori nutrizionali.</p>
+    <p class="sheet-sub">${all.length} alimenti${fLow ? ` · ${list.length} risultati per "${esc(filter)}"` : ' con i tuoi valori nutrizionali'}</p>
     <button class="btn btn-primary" id="new-custom" style="margin-bottom:8px">${I.plus}<span>Nuovo alimento</span></button>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       <button class="btn btn-secondary" id="cf-export" style="padding:10px;font-size:13px">${I.copy}<span>Esporta CSV</span></button>
       <button class="btn btn-secondary" id="cf-import" style="padding:10px;font-size:13px">${I.box}<span>Importa CSV</span></button>
     </div>
-    <div id="custom-list">
-      ${list.length === 0 ? `<div class="subtle-list-empty">Nessun alimento salvato</div>` : list.map(f => `
+    ${all.length > 0 ? `
+    <div class="field" style="margin-bottom:10px">
+      <input class="input" id="cf-search" placeholder="Cerca tra i tuoi alimenti..." value="${esc(filter)}" autocomplete="off">
+    </div>` : ''}
+    <div id="custom-list" style="max-height:60vh;overflow-y:auto">
+      ${all.length === 0 ? `<div class="subtle-list-empty">Nessun alimento salvato</div>` : list.length === 0 ? `<div class="subtle-list-empty">Nessun risultato</div>` : list.slice(0, 100).map(f => `
         <div style="display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px solid var(--border)">
           <div style="flex:1;min-width:0">
             <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}</div>
@@ -3841,10 +3905,18 @@ function openCustomFoodsSheet() {
           <button class="icon-btn" data-edit-custom="${esc(f.id)}" aria-label="Modifica">${I.edit}</button>
           <button class="icon-btn" data-del-custom="${esc(f.id)}" aria-label="Elimina" style="color:var(--text-3)">${I.trash}</button>
         </div>
-      `).join('')}
+      `).join('') + (list.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${list.length - 100} altri risultati. Affina la ricerca.</div>` : '')}
     </div>
   `;
   openSheet(html);
+  const searchInput = document.getElementById('cf-search');
+  if (searchInput) {
+    let t;
+    searchInput.oninput = () => {
+      clearTimeout(t);
+      t = setTimeout(() => openCustomFoodsSheet(searchInput.value), 220);
+    };
+  }
   document.getElementById('new-custom').onclick = () => openCustomFoodEditor(null);
   document.getElementById('cf-export').onclick = () => openExportFoodsChoiceSheet();
   document.getElementById('cf-import').onclick = () => handleImportFoodsCSV();
@@ -4363,14 +4435,26 @@ async function populateWeekSummaryCard() {
   }
 }
 
-function openTemplatesSheet(selectMealTarget = null) {
-  const list = state.templates;
+function openTemplatesSheet(selectMealTarget = null, filter = '') {
+  const all = state.templates;
+  const fLow = stripAccents(filter.trim().toLowerCase());
+  const list = !fLow ? all : all.filter(t => {
+    const itemNames = (t.items || []).map(it => (it.food && it.food.name) || '').join(' ');
+    const hay = stripAccents(((t.name || '') + ' ' + itemNames).toLowerCase());
+    return fLow.split(/\s+/).every(tok => hay.includes(tok));
+  });
   const html = `
     <h2 class="sheet-title">Pasti salvati</h2>
-    <p class="sheet-sub">${selectMealTarget ? 'Tocca un pasto per aggiungerlo al diario.' : 'Template riutilizzabili di più alimenti.'}</p>
-    ${!selectMealTarget ? `<button class="btn btn-primary" id="new-tpl" style="margin-bottom:14px">${I.plus}<span>Nuovo pasto</span></button>` : ''}
-    <div>
-      ${list.length === 0 ? `<div class="subtle-list-empty">Nessun pasto salvato</div>` : list.map(t => {
+    <p class="sheet-sub">${selectMealTarget
+      ? 'Tocca un pasto per aggiungerlo al diario.'
+      : `${all.length} pasti${fLow ? ` · ${list.length} risultati per "${esc(filter)}"` : ' template riutilizzabili'}`}</p>
+    ${!selectMealTarget ? `<button class="btn btn-primary" id="new-tpl" style="margin-bottom:10px">${I.plus}<span>Nuovo pasto</span></button>` : ''}
+    ${all.length > 0 ? `
+    <div class="field" style="margin-bottom:10px">
+      <input class="input" id="tpl-search" placeholder="Cerca tra i tuoi pasti..." value="${esc(filter)}" autocomplete="off">
+    </div>` : ''}
+    <div style="max-height:60vh;overflow-y:auto">
+      ${all.length === 0 ? `<div class="subtle-list-empty">Nessun pasto salvato</div>` : list.length === 0 ? `<div class="subtle-list-empty">Nessun risultato</div>` : list.slice(0, 100).map(t => {
         const kcal = t.items.reduce((s, it) => s + it.food.kcal * it.grams / 100, 0);
         return `<div style="display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px solid var(--border);cursor:${selectMealTarget ? 'pointer' : 'default'}" ${selectMealTarget ? `data-pick-tpl="${esc(t.id)}"` : ''}>
           <div style="flex:1;min-width:0">
@@ -4382,10 +4466,18 @@ function openTemplatesSheet(selectMealTarget = null) {
             <button class="icon-btn" data-del-tpl="${esc(t.id)}" aria-label="Elimina" style="color:var(--text-3)">${I.trash}</button>
           ` : `<div class="chev">${I.right}</div>`}
         </div>`;
-      }).join('')}
+      }).join('') + (list.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${list.length - 100} altri risultati. Affina la ricerca.</div>` : '')}
     </div>
   `;
   openSheet(html);
+  const searchInput = document.getElementById('tpl-search');
+  if (searchInput) {
+    let t;
+    searchInput.oninput = () => {
+      clearTimeout(t);
+      t = setTimeout(() => openTemplatesSheet(selectMealTarget, searchInput.value), 220);
+    };
+  }
   const nb = document.getElementById('new-tpl');
   if (nb) nb.onclick = () => openTemplateEditor(null);
   document.querySelectorAll('[data-edit-tpl]').forEach(b => {
@@ -4396,7 +4488,7 @@ function openTemplatesSheet(selectMealTarget = null) {
       if (!confirm('Eliminare questo pasto?')) return;
       await deleteTemplate(b.dataset.delTpl);
       await loadTemplates();
-      openTemplatesSheet(selectMealTarget);
+      openTemplatesSheet(selectMealTarget, filter);
     };
   });
   if (selectMealTarget) {
@@ -4549,7 +4641,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.11.1';
+const APP_VERSION = '1.13.0';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
