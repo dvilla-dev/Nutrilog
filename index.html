@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.10.2 -->
+<!-- NUTRILOG_VERSION: 1.11.1 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -145,7 +145,7 @@
     -webkit-backdrop-filter: blur(24px) saturate(140%);
     border-top: 1px solid var(--border);
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     padding: 8px 4px calc(8px + var(--safe-bot));
     gap: 2px;
     z-index: 10;
@@ -335,9 +335,15 @@
     border-radius: 10px;
     cursor: pointer;
     transition: background var(--dur) var(--ease);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    line-height: 1.1;
   }
   .datenav .date-label:active { background: var(--surface-2); transform: scale(0.97); }
-  .datenav .date-label span { display: block; font-size: 11px; color: var(--text-3); font-weight: 500; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.1em; }
+  .datenav .date-label span { display: block; font-size: 11px; color: var(--text-3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; }
 
   /* ═══════════════════════════════════════════════════
      CALENDAR SHEET
@@ -853,76 +859,6 @@
   }
 
   /* ═══════════════════════════════════════════════════
-     SCANNER
-     ═══════════════════════════════════════════════════ */
-  .scan-wrap {
-    margin: 0 var(--pad-lg);
-    background: #000;
-    border-radius: var(--r-card);
-    overflow: hidden;
-    aspect-ratio: 3 / 4;
-    position: relative;
-    border: 1px solid var(--border);
-  }
-  .scan-wrap video {
-    width: 100%; height: 100%;
-    object-fit: cover;
-  }
-  .scan-overlay {
-    position: absolute; inset: 0;
-    pointer-events: none;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .scan-frame {
-    width: 74%;
-    aspect-ratio: 1 / 0.6;
-    border: 2px solid var(--accent);
-    border-radius: 14px;
-    box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.45);
-    position: relative;
-  }
-  .scan-laser {
-    position: absolute;
-    left: 8px; right: 8px; top: 50%;
-    height: 1.5px;
-    background: var(--accent);
-    box-shadow: 0 0 10px var(--accent);
-    animation: laser 2s ease-in-out infinite;
-  }
-  @keyframes laser {
-    0%, 100% { top: 20%; opacity: 0.9; }
-    50% { top: 80%; opacity: 1; }
-  }
-  .scan-hint {
-    text-align: center;
-    color: var(--text-2);
-    padding: 16px var(--pad-lg);
-    font-size: 13px;
-  }
-  .scan-tap-hint {
-    position: absolute;
-    bottom: -28px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 11px;
-    color: var(--accent);
-    background: rgba(0,0,0,0.7);
-    padding: 4px 10px;
-    border-radius: 8px;
-    white-space: nowrap;
-    pointer-events: none;
-    letter-spacing: 0.04em;
-  }
-  .scan-frame-pulse {
-    animation: scanPulse 0.5s ease-out;
-  }
-  @keyframes scanPulse {
-    0%   { box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.45), 0 0 0 0 var(--accent); }
-    50%  { box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.45), 0 0 16px 4px var(--accent); }
-    100% { box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.45), 0 0 0 0 var(--accent); }
-  }
-
-  /* ═══════════════════════════════════════════════════
      LIST / PROFILE
      ═══════════════════════════════════════════════════ */
   .list-item {
@@ -1180,8 +1116,6 @@
     font-size: 14px;
   }
 </style>
-<!-- html5-qrcode scanner library (più affidabile di ZXing su iOS PWA) -->
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
 </head>
 <body>
 <div id="app"></div>
@@ -1235,15 +1169,9 @@ const state = {
   searchQuery: '',
   searchError: '',
   targetMeal: 'breakfast',  // pasto di destinazione predefinito
-  scanState: 'idle',    // idle | starting | running | manual | error
-  scanError: '',
   addFood: null,        // { food, meal } when choosing grams
   editFood: null,       // custom food being edited
   editTemplate: null,   // template being edited
-  stream: null,
-  detector: null,
-  scanLoop: null,
-  currentBarcode: null,
 };
 
 /* ─── UTILS ──────────────────────────────────────────────── */
@@ -1903,7 +1831,6 @@ async function login(email, password) {
 }
 async function logout() {
   await sd('session');
-  stopScanner();
   state.user = null;
   state.diary = emptyDiary();
   state.diaryDate = todayISO();
@@ -2730,13 +2657,6 @@ async function boot() {
       pruneOldDiaryEntries().catch(e => dlog('PRUNE auto FAIL: ' + e.message));
     }, 2000);
   }
-  // Pre-warm dello scanner: prova a caricare ZXing in background
-  // così quando l'utente tappa Scan è già pronto.
-  setTimeout(() => {
-    loadScannerLib()
-      .then(() => dlog('BOOT: scanner pre-warmed'))
-      .catch(e => dlog('BOOT: scanner pre-warm FAIL - ' + e.message));
-  }, 1000);
 }
 
 async function loadAll() {
@@ -2956,7 +2876,6 @@ function renderAppShell() {
   if (state.tab === 'today')   { header = renderHeader('Diario'); content = renderToday(); }
   if (state.tab === 'search')  { header = renderHeader('Cerca alimenti'); content = renderSearch(); }
   if (state.tab === 'photo')   { header = renderHeader('Foto AI'); content = renderPhotoTab(); }
-  if (state.tab === 'scan')    { header = renderHeader('Codice prodotto'); content = renderCodeTab(); }
   if (state.tab === 'profile') { header = renderHeader('Profilo'); content = renderProfile(); }
   return `${header}<div class="screen" id="screen">${content}</div>${tabbar}`;
 }
@@ -2972,7 +2891,6 @@ function renderTabbar() {
     ${tab('today', 'Oggi', I.home)}
     ${tab('search', 'Cerca', I.search)}
     ${tab('photo', 'Foto', I.camera)}
-    ${tab('scan', 'Codice', I.scan)}
     ${tab('profile', 'Profilo', I.user)}
   </div>`;
 }
@@ -3270,340 +3188,6 @@ function renderPhotoTab() {
   </div>`;
 }
 
-/* ─── SCAN (legacy, kept for compat) ─────────────────────── */
-function renderScan() {
-  if (state.scanState === 'starting') {
-    return `
-      <div class="scan-wrap">
-        <div id="reader" style="width:100%;height:100%;background:#000"></div>
-        <div class="scan-overlay" style="background:rgba(0,0,0,0.5)">
-          <div style="display:flex;flex-direction:column;align-items:center;gap:14px">
-            <div class="spinner"></div>
-            <div style="font-size:13px;color:var(--text)">Avvio scanner...</div>
-            <div style="font-size:11px;color:var(--text-2);max-width:280px;text-align:center">Apertura fotocamera in corso</div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  if (state.scanState === 'lookup') {
-    return `<div style="padding:32px var(--pad-lg);text-align:center">
-      <div class="spinner"></div>
-      <div style="font-size:14px;font-weight:600;margin-top:14px">Codice rilevato!</div>
-      <div style="font-family:ui-monospace,monospace;font-size:13px;color:var(--text-2);margin-top:6px">${esc(state.scanCode || '')}</div>
-      <div style="font-size:12px;color:var(--text-3);margin-top:10px">Cerco il prodotto su Open Food Facts...</div>
-    </div>`;
-  }
-  if (state.scanState === 'notfound') {
-    return `<div style="padding:0 var(--pad-lg)">
-      <div class="card-flat" style="text-align:center;margin-bottom:14px">
-        <div style="width:48px;height:48px;border-radius:50%;background:rgba(255,176,32,0.15);color:var(--warning);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        </div>
-        <div style="font-size:15px;font-weight:600;margin-bottom:4px">Prodotto non trovato</div>
-        <div style="font-family:ui-monospace,monospace;font-size:12px;color:var(--text-2);margin-bottom:6px">${esc(state.scanCode || '')}</div>
-        <div style="font-size:12px;color:var(--text-3);line-height:1.5">Il codice è stato letto correttamente ma non è nel database Open Food Facts.</div>
-      </div>
-      <button class="btn btn-primary" id="rescan">Scansiona un altro prodotto</button>
-      <button class="btn btn-secondary" id="rescan-quick" style="margin-top:8px">${I.bolt}<span>Aggiungi manualmente i valori</span></button>
-    </div>`;
-  }
-  if (state.scanState === 'denied') {
-    return `<div style="padding:0 var(--pad-lg)">
-      <div class="card-flat" style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-          <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,69,58,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-          </div>
-          <div>
-            <div style="font-size:14px;font-weight:600;color:var(--danger)">Permesso fotocamera negato</div>
-            <div style="font-size:12px;color:var(--text-2);margin-top:2px">Per usare lo scanner devi riabilitarlo</div>
-          </div>
-        </div>
-
-        <div style="background:var(--surface-2);border-radius:10px;padding:14px;font-size:13px;line-height:1.6">
-          <div style="font-weight:600;margin-bottom:8px;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-3)">Riabilita su iPhone</div>
-          <ol style="padding-left:20px;margin:0;color:var(--text-2)">
-            <li>Esci da NutriLog (chiudi la finestra)</li>
-            <li>Apri <b style="color:var(--text)">Impostazioni</b> di iOS</li>
-            <li>Scorri fino a <b style="color:var(--text)">NutriLog</b> (o "Safari" se non hai l'app PWA)</li>
-            <li>Tap su <b style="color:var(--text)">Fotocamera</b> → seleziona <b style="color:var(--text)">"Consenti"</b> o <b style="color:var(--text)">"Chiedi"</b></li>
-            <li>Riapri NutriLog dalla home</li>
-          </ol>
-        </div>
-      </div>
-
-      <button class="btn btn-primary" id="to-manual">${I.bolt}<span>Inserisci codice manualmente</span></button>
-      <button class="btn btn-secondary" id="retry-perm" style="margin-top:8px">Riprova fotocamera</button>
-    </div>`;
-  }
-  if (state.scanState === 'manual') {
-    return `
-      <div style="padding:0 var(--pad-lg)">
-        <div class="card-flat" style="text-align:center;margin-bottom:16px">
-          <div style="color:var(--text-2);font-size:13px;margin-bottom:12px">Fotocamera non disponibile</div>
-          <div style="font-size:12px;color:var(--text-3);line-height:1.5">${esc(state.scanError || 'Inserisci manualmente il codice a barre del prodotto.')}</div>
-        </div>
-        <form id="manual-form">
-          <div class="field">
-            <label>Codice a barre</label>
-            <input class="input" id="manual-code" inputmode="numeric" pattern="[0-9]*" placeholder="8001120012345" autofocus>
-          </div>
-          <button class="btn btn-primary" type="submit">Cerca prodotto</button>
-        </form>
-        <button class="btn btn-ghost" id="retry-cam" style="margin-top:8px">Riprova con fotocamera</button>
-      </div>`;
-  }
-  if (state.scanState === 'error') {
-    const recentLogs = (typeof _debugLog !== 'undefined' ? _debugLog.slice(-6).reverse() : []);
-    return `<div style="padding:0 var(--pad-lg)">
-      <div class="card-flat" style="text-align:center">
-        <div style="color:var(--danger);font-size:14px;margin-bottom:8px">Errore scanner</div>
-        <div style="font-size:13px;color:var(--text-2);margin-bottom:16px">${esc(state.scanError || 'Impossibile avviare la fotocamera')}</div>
-        <button class="btn btn-primary" id="to-manual">Inserisci codice manualmente</button>
-        <button class="btn btn-secondary" id="retry-cam" style="margin-top:8px">Riprova</button>
-        ${recentLogs.length ? `
-        <details style="margin-top:14px;text-align:left">
-          <summary style="cursor:pointer;font-size:11px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;font-weight:600;padding:8px 0">Diagnostica</summary>
-          <div style="background:var(--surface-2);border-radius:8px;padding:8px;font-family:ui-monospace,monospace;font-size:10px;color:var(--text-2);max-height:160px;overflow-y:auto">
-            ${recentLogs.map(l => `<div style="padding:1px 0;word-break:break-all">${esc(l)}</div>`).join('')}
-          </div>
-        </details>
-        ` : ''}
-      </div>
-    </div>`;
-  }
-  return `
-    <div class="scan-wrap">
-      <div id="reader" style="width:100%;height:100%;background:#000"></div>
-      <div class="scan-overlay" style="pointer-events:none">
-        <div class="scan-frame"><div class="scan-laser"></div></div>
-      </div>
-    </div>
-    <div class="scan-hint">Inquadra il codice a barre del prodotto</div>
-    <div style="padding:0 var(--pad-lg)">
-      <button class="btn btn-secondary" id="to-manual">Inserisci codice manualmente</button>
-    </div>
-  `;
-}
-
-/* ─── HTML5-QRCODE SCANNER ────────────────────────────────
-   Usiamo html5-qrcode (più affidabile di ZXing su iOS PWA).
-   Carica tutto da solo: camera, decode, render. Noi gli
-   diamo solo un container <div id="reader"> e i constraints.
-   ──────────────────────────────────────────────────────── */
-const HQR_READY_TIMEOUT = 15000;
-
-function loadScannerLib() {
-  if (window.Html5Qrcode) return Promise.resolve(window.Html5Qrcode);
-  return new Promise((resolve, reject) => {
-    const start = Date.now();
-    const checkInterval = setInterval(() => {
-      if (window.Html5Qrcode) {
-        clearInterval(checkInterval);
-        dlog('Html5Qrcode pronto dopo ' + (Date.now() - start) + 'ms');
-        resolve(window.Html5Qrcode);
-        return;
-      }
-      if (Date.now() - start > HQR_READY_TIMEOUT) {
-        clearInterval(checkInterval);
-        // Fallback: inietta dinamicamente
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
-        const tmr = setTimeout(() => reject(new Error('Timeout caricamento scanner')), 10000);
-        script.onload = () => {
-          clearTimeout(tmr);
-          if (window.Html5Qrcode) resolve(window.Html5Qrcode);
-          else reject(new Error('Html5Qrcode non disponibile dopo load'));
-        };
-        script.onerror = () => { clearTimeout(tmr); reject(new Error('Download scanner fallito')); };
-        document.head.appendChild(script);
-      }
-    }, 100);
-  });
-}
-
-async function startScanner() {
-  if (state.scanState === 'running' || state.scanState === 'starting') return;
-  state.scanState = 'starting';
-  state.scanError = '';
-  render();
-  dlog('SCAN: starting (html5-qrcode)...');
-
-  // Aspetta lib
-  let Html5Qrcode;
-  try {
-    Html5Qrcode = await loadScannerLib();
-    dlog('SCAN: step 1 OK - lib loaded');
-  } catch (e) {
-    dlog('SCAN: step 1 FAIL - ' + e.message);
-    state.scanError = '[Lib] ' + e.message;
-    state.scanState = 'error';
-    render();
-    return;
-  }
-
-  // Verifica HTTPS + getUserMedia
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    state.scanError = '[getUserMedia] Camera non supportata su questo browser';
-    state.scanState = 'error';
-    render();
-    return;
-  }
-  if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-    state.scanError = '[HTTPS] La fotocamera richiede HTTPS';
-    state.scanState = 'error';
-    render();
-    return;
-  }
-  dlog('SCAN: step 2 OK - getUserMedia + HTTPS');
-
-  // Aspetta che il render abbia committato il DOM
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-  // Attendi il container #reader (creato dal template renderScan)
-  let container = null;
-  for (let i = 0; i < 25; i++) {
-    container = document.getElementById('reader');
-    if (container) break;
-    if (i === 5) { dlog('SCAN: step 3 - forcing re-render'); render(); }
-    await new Promise(r => setTimeout(r, 200));
-  }
-  if (!container) {
-    dlog('SCAN: step 3 FAIL - container #reader non trovato');
-    state.scanError = '[Container] #reader mancante. Tap "Riprova"';
-    state.scanState = 'error';
-    render();
-    return;
-  }
-  dlog('SCAN: step 3 OK - container pronto');
-
-  // Crea istanza scanner
-  let scanner;
-  try {
-    scanner = new Html5Qrcode('reader', { verbose: false });
-    state.hqrScanner = scanner;
-    dlog('SCAN: step 4 OK - scanner creato');
-  } catch (e) {
-    dlog('SCAN: step 4 FAIL - ' + e.message);
-    state.scanError = '[Scanner] ' + e.message;
-    state.scanState = 'error';
-    render();
-    return;
-  }
-
-  // Config: solo formati barcode prodotti retail, alta risoluzione
-  const F = window.Html5QrcodeSupportedFormats || {};
-  const formats = [
-    F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39
-  ].filter(x => x !== undefined);
-
-  const config = {
-    fps: 10,
-    qrbox: { width: 280, height: 140 },
-    aspectRatio: 1.333334,
-    formatsToSupport: formats.length ? formats : undefined,
-    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-    videoConstraints: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-    },
-  };
-
-  const onSuccess = (decodedText, decodedResult) => {
-    dlog('SCAN: DECODED ' + decodedText);
-    stopScanner();
-    handleBarcodeResult(decodedText);
-  };
-  const onFailure = (errStr) => {
-    // Frame senza barcode: ignora silenziosamente
-  };
-
-  // Avvia
-  try {
-    dlog('SCAN: step 5 - scanner.start...');
-    await scanner.start({ facingMode: { ideal: 'environment' } }, config, onSuccess, onFailure);
-    state.scanState = 'running';
-    dlog('SCAN: step 5 OK - scanner running');
-    // Tap-to-focus (best effort)
-    setTimeout(() => {
-      try {
-        const video = document.querySelector('#reader video');
-        if (video && video.srcObject) {
-          const track = video.srcObject.getVideoTracks()[0];
-          if (track && track.applyConstraints) {
-            track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] })
-              .then(() => dlog('SCAN: autofocus continuo OK'))
-              .catch(e => dlog('SCAN: autofocus warn: ' + e.message));
-          }
-        }
-      } catch (e) {}
-    }, 800);
-  } catch (err) {
-    const errName = err && err.name || 'unknown';
-    const errMsg = err && err.message || String(err);
-    dlog('SCAN: step 5 FAIL - ' + errName + ': ' + errMsg);
-    if (/permiss|notallowed/i.test(errName + errMsg)) {
-      state.scanError = 'Permesso fotocamera negato';
-      state.scanState = 'denied';
-    } else if (/notfound/i.test(errName + errMsg)) {
-      state.scanError = 'Nessuna fotocamera trovata';
-      state.scanState = 'manual';
-    } else {
-      state.scanError = '[' + errName + '] ' + errMsg;
-      state.scanState = 'error';
-    }
-    render();
-  }
-}
-
-function stopScanner() {
-  try {
-    if (state.hqrScanner) {
-      const sc = state.hqrScanner;
-      // stop() è async; lasciamo che pulisca in background
-      if (typeof sc.stop === 'function') {
-        sc.stop().then(() => {
-          try { sc.clear(); } catch (_) {}
-        }).catch(() => {
-          try { sc.clear(); } catch (_) {}
-        });
-      }
-    }
-  } catch (_) {}
-  state.hqrScanner = null;
-  if (state.scanState !== 'denied' && state.scanState !== 'manual' && state.scanState !== 'error') {
-    state.scanState = 'idle';
-  }
-}
-
-
-async function handleBarcodeResult(code) {
-  state.scanState = 'lookup';
-  state.scanError = '';
-  state.scanCode = code;
-  render();
-  try {
-    const product = await lookupBarcode(code);
-    if (!product) {
-      state.scanState = 'notfound';
-      render();
-      return;
-    }
-    state.scanState = 'idle';
-    render();
-    // Apri il sheet di add (riusa quello esistente)
-    openAddFood(product, state.targetMeal || suggestMealByTime());
-  } catch (e) {
-    dlog('OFF lookup FAIL: ' + e.message);
-    state.scanState = 'error';
-    state.scanError = 'Lookup fallito: ' + e.message;
-    render();
-  }
-}
-
-async function handleBarcodeResult_unused() { /* placeholder rimosso */ }
 
 /* ─── PROFILE ───────────────────────────────────────────── */
 function renderProfile() {
@@ -3746,7 +3330,7 @@ function renderProfile() {
         </div>
       </div>
     </div>
-    <div style="text-align:center;padding:32px 20px;color:var(--text-3);font-size:11px;letter-spacing:0.1em;text-transform:uppercase">NutriLog · v1.0</div>
+    <div style="text-align:center;padding:32px 20px;color:var(--text-3);font-size:11px;letter-spacing:0.1em;text-transform:uppercase">NutriLog · v${APP_VERSION}</div>
   `;
 }
 
@@ -4965,7 +4549,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.10.2';
+const APP_VERSION = '1.11.1';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -5706,7 +5290,6 @@ function openFabMenu() {
     <div class="fab-menu" id="fab-menu">
       <button class="fab-menu-item" data-fab="quick"><span>Rapido · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.bolt}</span></button>
       <button class="fab-menu-item" data-fab="photo"><span>Foto AI · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.scan}</span></button>
-      <button class="fab-menu-item" data-fab="barcode"><span>Codice · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.scan}</span></button>
       <button class="fab-menu-item" data-fab="search"><span>Cerca · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.search}</span></button>
       <button class="fab-menu-item" data-fab="my"><span>I miei · ${esc(mealLabels[m])}</span><span class="fab-mi-icon">${I.box}</span></button>
     </div>
@@ -5721,8 +5304,6 @@ function openFabMenu() {
       if (action === 'search') {
         state.tab = 'search'; render();
         setTimeout(() => document.getElementById('q')?.focus(), 50);
-      } else if (action === 'barcode') {
-        state.tab = 'scan'; render();
       } else if (action === 'my') {
         openCustomPicker(m);
       } else if (action === 'photo') {
@@ -6403,23 +5984,19 @@ function bindApp() {
   document.querySelectorAll('.tab').forEach(t => {
     t.onclick = async () => {
       const next = t.dataset.tab;
-      if (state.tab === 'scan' && next !== 'scan') stopScanner();
       // Se l'utente entra dalla tab bar senza pasto specificato:
       // - search: default colazione (può cambiarlo dal foglio quantità)
-      // - photo/scan: pasto suggerito dall'orario corrente
+      // - photo: pasto suggerito dall'orario corrente
       if (next === 'search' && state.tab !== next) {
         state.targetMeal = 'breakfast';
       }
-      if ((next === 'photo' || next === 'scan') && state.tab !== next) {
+      if (next === 'photo' && state.tab !== next) {
         state.targetMeal = suggestMealByTime();
       }
       state.tab = next;
       render();
-      if (state.tab === 'scan') startScanner();
     };
   });
-  // start scanner when landing on tab
-  if (state.tab === 'scan' && state.scanState === 'idle') startScanner();
 
   // photo tab actions
   const phMealPick = document.getElementById('ph-meal-pick');
@@ -6546,37 +6123,6 @@ function bindApp() {
   }
   bindSearchResults();
 
-  // scan-related buttons
-  const toManual = document.getElementById('to-manual');
-  if (toManual) toManual.onclick = () => { stopScanner(); state.scanState = 'manual'; render(); };
-  const retryCam = document.getElementById('retry-cam');
-  if (retryCam) retryCam.onclick = () => { state.scanState = 'idle'; render(); startScanner(); };
-  const retryPerm = document.getElementById('retry-perm');
-  if (retryPerm) retryPerm.onclick = () => { state.scanState = 'idle'; state.scanError = ''; render(); startScanner(); };
-  const rescanBtn = document.getElementById('rescan');
-  if (rescanBtn) rescanBtn.onclick = () => { state.scanState = 'idle'; state.scanCode = ''; render(); startScanner(); };
-  const rescanQuick = document.getElementById('rescan-quick');
-  if (rescanQuick) rescanQuick.onclick = () => {
-    const code = state.scanCode;
-    state.scanState = 'idle';
-    state.scanCode = '';
-    openQuickAddSheet(state.targetMeal || suggestMealByTime());
-    if (code) toast('Codice: ' + code + ' (manuale)');
-  };
-  const manualForm = document.getElementById('manual-form');
-  if (manualForm) {
-    manualForm.onsubmit = async (e) => {
-      e.preventDefault();
-      const code = document.getElementById('manual-code').value.trim();
-      if (!code) return;
-      try {
-        const food = await lookupBarcode(code);
-        if (!food) { toast('Prodotto non trovato'); return; }
-        openAddFood(food, state.targetMeal);
-      } catch (_) { toast('Errore nel recupero prodotto'); }
-    };
-  }
-
   // profile navigation
   document.querySelectorAll('[data-go]').forEach(el => {
     el.onclick = () => {
@@ -6628,13 +6174,6 @@ function bindSearchResults() {
     if (state.searchQuery) doSearch(state.searchQuery);
   };
 }
-
-/* ─── LIFECYCLE ─────────────────────────────────────────── */
-window.addEventListener('pagehide', stopScanner);
-window.addEventListener('beforeunload', stopScanner);
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && state.stream) stopScanner();
-});
 
 /* ─── GO! ──────────────────────────────────────────────── */
 boot();
