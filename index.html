@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.10.0 -->
+<!-- NUTRILOG_VERSION: 1.10.1 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -3604,21 +3604,24 @@ async function startScanner() {
     // i loop interni di ZXing che si bloccano in PWA standalone.
     dlog('SCAN: step 6d - avvio decode loop (canvas-based)...');
     state.zxingDecodeActive = true;
+    state._scanErrCount = 0;
 
     // Canvas di lavoro per catturare frame del video
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     // Detect API ZXing disponibili. PREFERIAMO l'API base sincrona
-    // (BinaryBitmap) perché decodeFromImageElement è async/Promise e crea
-    // race conditions con il canvas drawing.
+    // (BinaryBitmap) perché decodeFromImageElement è async/Promise.
+    // Su iOS, HTMLCanvasElementLuminanceSource fallisce con "Type error":
+    // costruiamo manualmente il LuminanceSource dai pixel grezzi.
     const Z = window.ZXing;
-    const hasBaseAPI = !!(Z && Z.HTMLCanvasElementLuminanceSource && Z.HybridBinarizer && Z.BinaryBitmap && typeof reader.decode === 'function');
+    const hasRGBSource = !!(Z && Z.RGBLuminanceSource && Z.HybridBinarizer && Z.BinaryBitmap && typeof reader.decode === 'function');
+    const hasCanvasSource = !!(Z && Z.HTMLCanvasElementLuminanceSource && Z.HybridBinarizer && Z.BinaryBitmap && typeof reader.decode === 'function');
     const hasDecodeCanvas = typeof reader.decodeFromCanvas === 'function';
-    dlog(`SCAN: API check - baseAPI:${hasBaseAPI} canvas:${hasDecodeCanvas}`);
+    dlog(`SCAN: API check - rgb:${hasRGBSource} canvasSource:${hasCanvasSource} decodeCanvas:${hasDecodeCanvas}`);
 
-    if (!hasBaseAPI && !hasDecodeCanvas) {
-      dlog('SCAN: FATAL - nessun metodo decode sincrono disponibile in ZXing');
+    if (!hasRGBSource && !hasCanvasSource && !hasDecodeCanvas) {
+      dlog('SCAN: FATAL - nessun metodo decode disponibile in ZXing');
       state.scanError = 'ZXing API mancante: ricarica la pagina o aggiorna versione';
       state.scanState = 'error';
       stopScanner();
@@ -3627,14 +3630,31 @@ async function startScanner() {
     }
 
     const decodeFrame = (cv) => {
-      // Preferisci API base (sincrona, affidabile)
-      if (hasBaseAPI) {
+      // PREFERITO: RGBLuminanceSource manuale (immune a iOS Safari bugs)
+      if (hasRGBSource) {
+        const w = cv.width, h = cv.height;
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data; // Uint8ClampedArray RGBA
+        // Converti RGBA → luminance grayscale (8 bit per pixel)
+        // ZXing RGBLuminanceSource accetta un array di luminance values
+        const luminances = new Uint8ClampedArray(w * h);
+        for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+          // Formula standard ITU-R BT.601 luma
+          luminances[j] = (data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114) | 0;
+        }
+        const luminance = new Z.RGBLuminanceSource(luminances, w, h);
+        const binarizer = new Z.HybridBinarizer(luminance);
+        const binaryBitmap = new Z.BinaryBitmap(binarizer);
+        return reader.decode(binaryBitmap);
+      }
+      // Fallback 1: Canvas-based source (può fallire su iOS)
+      if (hasCanvasSource) {
         const luminance = new Z.HTMLCanvasElementLuminanceSource(cv);
         const binarizer = new Z.HybridBinarizer(luminance);
         const binaryBitmap = new Z.BinaryBitmap(binarizer);
         return reader.decode(binaryBitmap);
       }
-      // Fallback: decodeFromCanvas se disponibile
+      // Fallback 2: decodeFromCanvas se disponibile
       return reader.decodeFromCanvas(cv);
     };
 
@@ -3672,8 +3692,13 @@ async function startScanner() {
           } catch (err) {
             // NotFoundException = nessun barcode visibile in questo frame, NORMALE
             const errName = err && err.name || '';
+            const errMsg = err && err.message || '';
             if (errName !== 'NotFoundException' && errName !== 'NotFoundException2' && errName !== 'ChecksumException' && errName !== 'FormatException' && errName !== 'NotFoundException3') {
-              dlog('SCAN: decode err: ' + errName + ' ' + (err.message || err));
+              // Log solo i primi N errori "veri" per non riempire il log
+              state._scanErrCount = (state._scanErrCount || 0) + 1;
+              if (state._scanErrCount <= 3) {
+                dlog('SCAN: decode err [' + state._scanErrCount + ']: ' + errName + ' / ' + errMsg + ' / canvas ' + canvas.width + 'x' + canvas.height);
+              }
             }
           }
         }
@@ -5203,7 +5228,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.10.1';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
