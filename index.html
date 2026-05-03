@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.13.0 -->
+<!-- NUTRILOG_VERSION: 1.14.1 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -17,6 +17,12 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0A0A0A" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="NutriLog" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="format-detection" content="telephone=no" />
+<link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%22-12 -12 124 124%22><rect x=%22-12%22 y=%22-12%22 width=%22124%22 height=%22124%22 rx=%2228%22 fill=%22%230A0A0A%22/><path d=%22M50 18c-9 0-16 4-21 11-5 7-7 16-7 26 0 9 3 18 8 24 6 7 13 11 22 11 9 0 17-4 22-11 6-7 8-15 8-25 0-10-2-19-7-26-5-7-13-10-25-10z%22 fill=%22none%22 stroke=%22%23C6FF00%22 stroke-width=%228%22 stroke-linejoin=%22round%22/><path d=%22M50 28c-3 0-6 1-9 3 4 1 7 4 8 8 1-3 4-5 8-6-2-3-5-5-7-5z%22 fill=%22%23C6FF00%22/></svg>" />
 <title>NutriLog</title>
 <style>
   /* ═══════════════════════════════════════════════════
@@ -1903,6 +1909,11 @@ function scheduleCloudAutoSync() {
   if (!cfg || !cfg.autoSync) return;
   if (_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
   _cloudSyncTimer = setTimeout(async () => {
+    // Skip se offline
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      dlog('auto-sync cloud: skip (offline) - reschedule on online');
+      return;
+    }
     try {
       const payload = await exportUserData();
       await cloudBackup.push(APP_ID, payload);
@@ -1911,6 +1922,14 @@ function scheduleCloudAutoSync() {
       dlog('auto-sync cloud FAILED: ' + e.message);
     }
   }, 15000); // 15 secondi di inattività prima del push
+}
+
+// Riprova sync quando torna la connessione
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    dlog('Online: ripianifico sync cloud');
+    scheduleCloudAutoSync();
+  });
 }
 async function addFoodToDiary(meal, food, grams) {
   const entry = {
@@ -2065,32 +2084,6 @@ async function saveGoalsSchema(schema) {
   state.goalsSchema = clean;
 }
 
-/* ─── OFF API ────────────────────────────────────────────── */
-function normalizeOFF(p) {
-  if (!p) return null;
-  const n = p.nutriments || {};
-  let kcal = num(n['energy-kcal_100g']);
-  if (!kcal) kcal = num(n['energy-kcal']);
-  if (!kcal && n['energy_100g']) kcal = n['energy_100g'] / 4.184; // kJ → kcal fallback
-  let sodium = num(n['sodium_100g']);
-  if (!sodium && n['salt_100g']) sodium = n['salt_100g'] / 2.5;
-  const name = (p.product_name || p.product_name_it || p.product_name_en || p.generic_name || '').trim();
-  if (!name) return null;
-  return {
-    id: 'off-' + (p.code || p._id || uid()),
-    code: p.code || p._id || '',
-    name,
-    brand: (p.brands || '').split(',')[0].trim(),
-    kcal: round(kcal, 1),
-    protein: round(num(n.proteins_100g), 1),
-    carbs: round(num(n.carbohydrates_100g), 1),
-    fat: round(num(n.fat_100g), 1),
-    fiber: round(num(n.fiber_100g), 1),
-    sugar: round(num(n.sugars_100g), 1),
-    sodium: round(sodium * 1000, 0), // convert g → mg
-    image_url: p.image_url || p.image_small_url || p.image_front_url || p.image_front_small_url || '',
-  };
-}
 /* ─── LOCAL FOOD DATABASE (Italian) ─────────────────────── */
 /* Valori nutrizionali per 100g di prodotto (fonte: CREA-INRAN, etichette) */
 const LOCAL_FOODS = [
@@ -2566,7 +2559,12 @@ async function searchOFF(q) {
 }
 
 async function aiSearchFoods(q) {
-  const system = `Sei un database nutrizionale per un diario alimentare italiano.
+  const cfg = getAiConfig();
+  if (!cfg || !cfg.apiKey) {
+    throw new Error('AI Vision non configurato (Profilo → AI Vision)');
+  }
+
+  const prompt = `Sei un database nutrizionale per un diario alimentare italiano.
 Rispondi SOLO con JSON valido (no markdown, no backtick, no commenti, no testo introduttivo).
 Formato esatto:
 {"items":[{"name":"string","brand":"string","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}]}
@@ -2578,75 +2576,76 @@ Regole:
 - Per prodotti commerciali italiani noti (Nutella, Plasmon, Barilla, Mulino Bianco, Galbani, Parmalat, ecc.) includi la marca.
 - Fornisci tra 5 e 8 risultati rilevanti, includendo varianti utili (es. "pasta" → "Pasta di semola cruda", "Pasta cotta", "Pasta integrale", ecc).
 - Nomi in italiano.
-- Se un valore nutrizionale è zero o non applicabile, usa 0.`;
+- Se un valore nutrizionale è zero o non applicabile, usa 0.
 
-  let res;
-  try {
-    res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system,
-        messages: [{ role: 'user', content: `Query: ${q}` }]
-      })
-    });
-  } catch (e) {
-    throw new Error('Rete non disponibile: ' + (e.message || e));
+Query utente: ${q}`;
+
+  const MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      response_mime_type: 'application/json',
+      temperature: 0.2,
+      max_output_tokens: 2048,
+    },
+  };
+
+  let lastErr = null;
+  for (const model of MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cfg.apiKey)}`;
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      lastErr = new Error('Rete: ' + (e.message || 'fetch failed'));
+      continue;
+    }
+    if (!res.ok) {
+      // 404 = modello non disponibile, prova prossimo
+      if (res.status === 404) { lastErr = new Error(`Modello ${model} non disponibile`); continue; }
+      let detail = '';
+      try { detail = (await res.text()).slice(0, 200); } catch (_) {}
+      throw new Error(`AI HTTP ${res.status} ${res.statusText} ${detail}`);
+    }
+
+    const data = await res.json();
+    const candidates = data.candidates || [];
+    if (!candidates.length) { lastErr = new Error('AI no candidates'); continue; }
+    const parts = (candidates[0].content && candidates[0].content.parts) || [];
+    const raw = parts.map(p => p.text || '').join('').trim();
+    if (!raw) { lastErr = new Error('AI risposta vuota'); continue; }
+
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) { lastErr = new Error('AI non ha restituito JSON'); continue; }
+
+    let parsed;
+    try { parsed = JSON.parse(match[0]); }
+    catch (e) { lastErr = new Error('JSON malformato: ' + e.message); continue; }
+
+    const items = Array.isArray(parsed.items) ? parsed.items : [];
+    return items
+      .filter(it => it && typeof it.name === 'string' && it.name.trim())
+      .map(it => ({
+        id: 'ai-' + uid(),
+        code: '',
+        name: String(it.name).trim(),
+        brand: String(it.brand || '').trim(),
+        kcal: round(num(it.kcal), 1),
+        protein: round(num(it.protein), 1),
+        carbs: round(num(it.carbs), 1),
+        fat: round(num(it.fat), 1),
+        fiber: round(num(it.fiber), 1),
+        sugar: round(num(it.sugar), 1),
+        sodium: round(num(it.sodium), 0),
+        image_url: '',
+        _ai: true,
+      }));
   }
-
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.text()).slice(0, 200); } catch (_) {}
-    throw new Error(`AI HTTP ${res.status} ${res.statusText} ${detail}`);
-  }
-
-  let data;
-  try { data = await res.json(); }
-  catch (e) { throw new Error('Risposta AI non JSON: ' + e.message); }
-
-  const raw = (data.content || [])
-    .filter(b => b && b.type === 'text')
-    .map(b => b.text)
-    .join('')
-    .trim();
-
-  if (!raw) throw new Error('AI ha restituito risposta vuota');
-
-  // estrae il primo blocco JSON valido (gestisce eventuali backtick residui)
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('AI non ha restituito JSON');
-
-  let parsed;
-  try { parsed = JSON.parse(match[0]); }
-  catch (e) { throw new Error('JSON AI malformato: ' + e.message); }
-
-  const items = Array.isArray(parsed.items) ? parsed.items : [];
-  return items
-    .filter(it => it && typeof it.name === 'string' && it.name.trim())
-    .map(it => ({
-      id: 'ai-' + uid(),
-      code: '',
-      name: String(it.name).trim(),
-      brand: String(it.brand || '').trim(),
-      kcal: round(num(it.kcal), 1),
-      protein: round(num(it.protein), 1),
-      carbs: round(num(it.carbs), 1),
-      fat: round(num(it.fat), 1),
-      fiber: round(num(it.fiber), 1),
-      sugar: round(num(it.sugar), 1),
-      sodium: round(num(it.sodium), 0),
-      image_url: '',
-      _ai: true,
-    }));
-}
-async function lookupBarcode(code) {
-  const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}`);
-  if (!r.ok) throw new Error('Errore di rete');
-  const data = await r.json();
-  if (data.status !== 1 || !data.product) return null;
-  return normalizeOFF(data.product);
+  throw lastErr || new Error('AI search fallita');
 }
 
 /* ─── BOOT ───────────────────────────────────────────────── */
@@ -2900,12 +2899,22 @@ function renderHeader(title) {
   return `<div class="header"><h1>${esc(title)}</h1></div>`;
 }
 function renderTabbar() {
-  const tab = (id, label, icon) => `
+  const tab = (id, label, icon, sublabel) => `
     <button class="tab ${state.tab === id ? 'active' : ''}" data-tab="${id}">
-      ${icon}<span>${label}</span>
+      ${icon}<span>${label}${sublabel ? `<small style="display:block;font-size:9px;opacity:0.7;margin-top:1px;letter-spacing:0">${sublabel}</small>` : ''}</span>
     </button>`;
+  // Per il tab "Oggi": se state.date è oggi → label "Oggi". Altrimenti label
+  // è il giorno selezionato (es. "1 MAG") con piccolo accento indicatore.
+  const today = todayISO();
+  const onToday = state.date === today;
+  const todayLabel = onToday ? 'Oggi' : (() => {
+    const months = ['GEN','FEB','MAR','APR','MAG','GIU','LUG','AGO','SET','OTT','NOV','DIC'];
+    const d = parseInt(state.date.slice(8,10), 10);
+    const m = months[parseInt(state.date.slice(5,7), 10) - 1];
+    return `${d} ${m}`;
+  })();
   return `<div class="tabbar">
-    ${tab('today', 'Oggi', I.home)}
+    ${tab('today', todayLabel, I.home, !onToday ? '• torna a oggi' : null)}
     ${tab('search', 'Cerca', I.search)}
     ${tab('photo', 'Foto', I.camera)}
     ${tab('profile', 'Profilo', I.user)}
@@ -3135,7 +3144,7 @@ const doSearch = debounce(async (q) => {
     state.searchError = (e && e.message) ? e.message : String(e);
     state.searchResults = [];
     state.searchTemplateResults = [];
-    console.error('[NutriLog] search error:', e);
+    dlog('search error: ' + ((e && e.message) ? e.message : String(e)));
     updateSearchResults();
   }
 }, 300);
@@ -3354,7 +3363,10 @@ function renderProfile() {
 /* ═══════════════════════════════════════════════════════════
    SHEETS (modals)
    ═══════════════════════════════════════════════════════════ */
+let _sheetGen = 0;  // Incrementato ad ogni openSheet/closeSheet, usato dai debounce per evitare leak
+
 function openSheet(html) {
+  _sheetGen++;
   const portal = document.getElementById('portal');
   portal.innerHTML = `<div class="sheet-backdrop" id="backdrop"><div class="sheet" id="sheet">
     <div class="sheet-handle"></div>
@@ -3403,6 +3415,7 @@ function openSheet(html) {
   });
 }
 function closeSheet() {
+  _sheetGen++;
   document.getElementById('portal').innerHTML = '';
   state.addFood = null;
   state.editFood = null;
@@ -3878,14 +3891,35 @@ function renderGoalsSheet() {
 /* ─── CUSTOM FOODS SHEET ───────────────────────────────── */
 function openCustomFoodsSheet(filter = '') {
   const all = state.customFoods;
-  const fLow = stripAccents(filter.trim().toLowerCase());
-  const list = !fLow ? all : all.filter(f => {
-    const hay = stripAccents(((f.name || '') + ' ' + (f.brand || '')).toLowerCase());
-    return fLow.split(/\s+/).every(t => hay.includes(t));
-  });
+  const renderListHtml = (filterStr) => {
+    const fLow = stripAccents((filterStr || '').trim().toLowerCase());
+    const list = !fLow ? all : all.filter(f => {
+      const hay = stripAccents(((f.name || '') + ' ' + (f.brand || '')).toLowerCase());
+      return fLow.split(/\s+/).every(t => hay.includes(t));
+    });
+    return {
+      sub: `${all.length} alimenti${fLow ? ` · ${list.length} risultati` : ' con i tuoi valori nutrizionali'}`,
+      list,
+      html: all.length === 0
+        ? `<div class="subtle-list-empty">Nessun alimento salvato</div>`
+        : list.length === 0
+          ? `<div class="subtle-list-empty">Nessun risultato</div>`
+          : list.slice(0, 100).map(f => `
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px solid var(--border)">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}</div>
+                <div style="font-size:12px;color:var(--text-2);margin-top:2px">${esc(f.brand || 'Senza marca')} · ${round(f.kcal)} kcal/100g</div>
+              </div>
+              <button class="icon-btn" data-edit-custom="${esc(f.id)}" aria-label="Modifica">${I.edit}</button>
+              <button class="icon-btn" data-del-custom="${esc(f.id)}" aria-label="Elimina" style="color:var(--text-3)">${I.trash}</button>
+            </div>
+          `).join('') + (list.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${list.length - 100} altri risultati. Affina la ricerca.</div>` : ''),
+    };
+  };
+  const initial = renderListHtml(filter);
   const html = `
     <h2 class="sheet-title">I miei alimenti</h2>
-    <p class="sheet-sub">${all.length} alimenti${fLow ? ` · ${list.length} risultati per "${esc(filter)}"` : ' con i tuoi valori nutrizionali'}</p>
+    <p class="sheet-sub" id="cf-sub">${initial.sub}</p>
     <button class="btn btn-primary" id="new-custom" style="margin-bottom:8px">${I.plus}<span>Nuovo alimento</span></button>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       <button class="btn btn-secondary" id="cf-export" style="padding:10px;font-size:13px">${I.copy}<span>Esporta CSV</span></button>
@@ -3893,44 +3927,47 @@ function openCustomFoodsSheet(filter = '') {
     </div>
     ${all.length > 0 ? `
     <div class="field" style="margin-bottom:10px">
-      <input class="input" id="cf-search" placeholder="Cerca tra i tuoi alimenti..." value="${esc(filter)}" autocomplete="off">
+      <input class="input" id="cf-search" placeholder="Cerca tra i tuoi alimenti..." value="${esc(filter)}" autocomplete="off" autocapitalize="off" autocorrect="off">
     </div>` : ''}
-    <div id="custom-list" style="max-height:60vh;overflow-y:auto">
-      ${all.length === 0 ? `<div class="subtle-list-empty">Nessun alimento salvato</div>` : list.length === 0 ? `<div class="subtle-list-empty">Nessun risultato</div>` : list.slice(0, 100).map(f => `
-        <div style="display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px solid var(--border)">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}</div>
-            <div style="font-size:12px;color:var(--text-2);margin-top:2px">${esc(f.brand || 'Senza marca')} · ${round(f.kcal)} kcal/100g</div>
-          </div>
-          <button class="icon-btn" data-edit-custom="${esc(f.id)}" aria-label="Modifica">${I.edit}</button>
-          <button class="icon-btn" data-del-custom="${esc(f.id)}" aria-label="Elimina" style="color:var(--text-3)">${I.trash}</button>
-        </div>
-      `).join('') + (list.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${list.length - 100} altri risultati. Affina la ricerca.</div>` : '')}
-    </div>
+    <div id="custom-list" style="max-height:60vh;overflow-y:auto">${initial.html}</div>
   `;
   openSheet(html);
+  // Bind delete/edit handlers (delegated, sopravvivono ai re-render della lista)
+  const listEl = document.getElementById('custom-list');
+  const bindRowActions = () => {
+    listEl.querySelectorAll('[data-edit-custom]').forEach(b => {
+      b.onclick = () => openCustomFoodEditor(state.customFoods.find(f => f.id === b.dataset.editCustom));
+    });
+    listEl.querySelectorAll('[data-del-custom]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('Eliminare questo alimento?')) return;
+        await deleteCustomFood(b.dataset.delCustom);
+        await loadCustomFoods();
+        // Riapri il sheet con il filtro corrente per ricaricare i dati
+        const cur = document.getElementById('cf-search');
+        openCustomFoodsSheet(cur ? cur.value : '');
+      };
+    });
+  };
+  bindRowActions();
+  // Search input: aggiorna SOLO la lista, NON ricrea l'intero sheet (preserva focus)
   const searchInput = document.getElementById('cf-search');
   if (searchInput) {
     let t;
     searchInput.oninput = () => {
       clearTimeout(t);
-      t = setTimeout(() => openCustomFoodsSheet(searchInput.value), 220);
+      t = setTimeout(() => {
+        const updated = renderListHtml(searchInput.value);
+        const subEl = document.getElementById('cf-sub');
+        if (subEl) subEl.textContent = updated.sub;
+        listEl.innerHTML = updated.html;
+        bindRowActions();
+      }, 180);
     };
   }
   document.getElementById('new-custom').onclick = () => openCustomFoodEditor(null);
   document.getElementById('cf-export').onclick = () => openExportFoodsChoiceSheet();
   document.getElementById('cf-import').onclick = () => handleImportFoodsCSV();
-  document.querySelectorAll('[data-edit-custom]').forEach(b => {
-    b.onclick = () => openCustomFoodEditor(state.customFoods.find(f => f.id === b.dataset.editCustom));
-  });
-  document.querySelectorAll('[data-del-custom]').forEach(b => {
-    b.onclick = async () => {
-      if (!confirm('Eliminare questo alimento?')) return;
-      await deleteCustomFood(b.dataset.delCustom);
-      await loadCustomFoods();
-      openCustomFoodsSheet();
-    };
-  });
 }
 /* ─── DATABASE ALIMENTI ───────────────────────────────────
    Permette di visualizzare, modificare e aggiungere alimenti
@@ -3944,42 +3981,50 @@ async function openDbFoodsSheet(filter = '', showHidden = false) {
   const list = showHidden ? await getAllDbFoods() : (state.dbFoods || []);
   const allList = await getAllDbFoods();
   const hiddenCount = allList.filter(f => f._hidden).length;
-  const fLow = stripAccents(filter.trim().toLowerCase());
-  const filtered = !fLow ? list : list.filter(f => {
-    const hay = stripAccents((f.name + ' ' + (f.brand || '')).toLowerCase());
-    return fLow.split(/\s+/).every(t => hay.includes(t));
-  });
   const totalMod = list.filter(f => f._modified).length;
   const totalAdd = list.filter(f => f._kind === 'added').length;
+
+  const renderListData = (filterStr) => {
+    const fLow = stripAccents((filterStr || '').trim().toLowerCase());
+    const filtered = !fLow ? list : list.filter(f => {
+      const hay = stripAccents((f.name + ' ' + (f.brand || '')).toLowerCase());
+      return fLow.split(/\s+/).every(t => hay.includes(t));
+    });
+    return {
+      sub: `${list.length} alimenti${totalMod || totalAdd ? ` · ${totalMod} modificat${totalMod === 1 ? 'o' : 'i'}, ${totalAdd} aggiunt${totalAdd === 1 ? 'o' : 'i'}` : ' · valori CREA-INRAN ufficiali'}${hiddenCount && !showHidden ? ` · ${hiddenCount} rimoss${hiddenCount === 1 ? 'o' : 'i'}` : ''}${fLow ? ` · ${filtered.length} risultati` : ''}`,
+      html: filtered.length === 0
+        ? `<div class="subtle-list-empty">${fLow ? 'Nessun risultato' : 'Database vuoto'}</div>`
+        : filtered.slice(0, 100).map(f => {
+            const idAttr = f._kind === 'added' ? `add-${f._addId}` : `idx-${f._index}`;
+            const modBadge = f._modified ? `<span style="display:inline-block;background:var(--accent-dim);color:var(--accent);font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;letter-spacing:0.05em;text-transform:uppercase">MOD</span>` : '';
+            const addBadge = f._kind === 'added' ? `<span style="display:inline-block;background:rgba(85,200,255,0.15);color:#5cf;font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;letter-spacing:0.05em;text-transform:uppercase">NUOVO</span>` : '';
+            const hidBadge = f._hidden ? `<span style="display:inline-block;background:rgba(255,69,58,0.15);color:var(--danger);font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;letter-spacing:0.05em;text-transform:uppercase">RIMOSSO</span>` : '';
+            return `
+            <div style="display:flex;align-items:center;gap:12px;padding:11px 6px;border-bottom:1px solid var(--border);${f._hidden ? 'opacity:0.55' : ''}" data-db-row="${idAttr}">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}${modBadge}${addBadge}${hidBadge}</div>
+                <div style="font-size:12px;color:var(--text-2);margin-top:2px">${esc(f.brand || 'CREA-INRAN')} · ${round(f.kcal)} kcal · P${round(f.protein)} C${round(f.carbs)} G${round(f.fat)}</div>
+              </div>
+              ${f._hidden
+                ? `<button class="icon-btn" data-restore-db="${idAttr}" aria-label="Ripristina" style="color:var(--accent)">${I.refresh}</button>`
+                : `<button class="icon-btn" data-edit-db="${idAttr}" aria-label="Modifica">${I.edit}</button>`
+              }
+            </div>`;
+          }).join('') + (filtered.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${filtered.length - 100} altri risultati. Affina la ricerca.</div>` : ''),
+    };
+  };
+  const initial = renderListData(filter);
   const html = `
     <h2 class="sheet-title">Database alimenti${showHidden ? ' (con rimossi)' : ''}</h2>
-    <p class="sheet-sub">${list.length} alimenti${totalMod || totalAdd ? ` · ${totalMod} modificat${totalMod === 1 ? 'o' : 'i'}, ${totalAdd} aggiunt${totalAdd === 1 ? 'o' : 'i'}` : ' · valori CREA-INRAN ufficiali'}${hiddenCount && !showHidden ? ` · ${hiddenCount} rimoss${hiddenCount === 1 ? 'o' : 'i'}` : ''}</p>
+    <p class="sheet-sub" id="db-sub">${initial.sub}</p>
 
     <button class="btn btn-primary" id="db-new" style="margin-bottom:10px">${I.plus}<span>Nuovo alimento</span></button>
 
     <div class="field" style="margin-bottom:10px">
-      <input class="input" id="db-search" placeholder="Cerca nel database..." value="${esc(filter)}" autocomplete="off">
+      <input class="input" id="db-search" placeholder="Cerca nel database..." value="${esc(filter)}" autocomplete="off" autocapitalize="off" autocorrect="off">
     </div>
 
-    <div id="db-list" style="max-height:60vh;overflow-y:auto">
-      ${filtered.length === 0 ? `<div class="subtle-list-empty">${fLow ? 'Nessun risultato' : 'Database vuoto'}</div>` : filtered.slice(0, 100).map(f => {
-        const idAttr = f._kind === 'added' ? `add-${f._addId}` : `idx-${f._index}`;
-        const modBadge = f._modified ? `<span style="display:inline-block;background:var(--accent-dim);color:var(--accent);font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;letter-spacing:0.05em;text-transform:uppercase">MOD</span>` : '';
-        const addBadge = f._kind === 'added' ? `<span style="display:inline-block;background:rgba(85,200,255,0.15);color:#5cf;font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;letter-spacing:0.05em;text-transform:uppercase">NUOVO</span>` : '';
-        const hidBadge = f._hidden ? `<span style="display:inline-block;background:rgba(255,69,58,0.15);color:var(--danger);font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;letter-spacing:0.05em;text-transform:uppercase">RIMOSSO</span>` : '';
-        return `
-        <div style="display:flex;align-items:center;gap:12px;padding:11px 6px;border-bottom:1px solid var(--border);${f._hidden ? 'opacity:0.55' : ''}" data-db-row="${idAttr}">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}${modBadge}${addBadge}${hidBadge}</div>
-            <div style="font-size:12px;color:var(--text-2);margin-top:2px">${esc(f.brand || 'CREA-INRAN')} · ${round(f.kcal)} kcal · P${round(f.protein)} C${round(f.carbs)} G${round(f.fat)}</div>
-          </div>
-          ${f._hidden
-            ? `<button class="icon-btn" data-restore-db="${idAttr}" aria-label="Ripristina" style="color:var(--accent)">${I.refresh}</button>`
-            : `<button class="icon-btn" data-edit-db="${idAttr}" aria-label="Modifica">${I.edit}</button>`
-          }
-        </div>`;
-      }).join('') + (filtered.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${filtered.length - 100} altri risultati. Affina la ricerca.</div>` : '')}
-    </div>
+    <div id="db-list" style="max-height:60vh;overflow-y:auto">${initial.html}</div>
 
     ${hiddenCount > 0 ? `
       <button class="btn btn-ghost" id="db-toggle-hidden" style="margin-top:14px;font-size:13px">
@@ -3988,43 +4033,57 @@ async function openDbFoodsSheet(filter = '', showHidden = false) {
     ` : ''}
   `;
   openSheet(html);
+  const listEl = document.getElementById('db-list');
+  const bindRowActions = () => {
+    listEl.querySelectorAll('[data-edit-db]').forEach(b => {
+      b.onclick = () => {
+        const ref = b.dataset.editDb;
+        if (ref.startsWith('add-')) {
+          const addId = ref.slice(4);
+          const food = list.find(f => f._kind === 'added' && f._addId === addId);
+          if (food) openDbFoodEditor(food);
+        } else if (ref.startsWith('idx-')) {
+          const idx = parseInt(ref.slice(4), 10);
+          const food = list.find(f => f._kind === 'builtin' && f._index === idx);
+          if (food) openDbFoodEditor(food);
+        }
+      };
+    });
+    listEl.querySelectorAll('[data-restore-db]').forEach(b => {
+      b.onclick = async () => {
+        const ref = b.dataset.restoreDb;
+        if (!ref.startsWith('idx-')) return;
+        const idx = parseInt(ref.slice(4), 10);
+        await sd(`dbHidden:${state.user.userId}:${idx}`);
+        await refreshDbFoodsCache();
+        if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
+        toast('Ripristinato');
+        const cur = document.getElementById('db-search');
+        openDbFoodsSheet(cur ? cur.value : '', showHidden);
+      };
+    });
+  };
+  bindRowActions();
   const searchInput = document.getElementById('db-search');
   if (searchInput) {
     let t;
     searchInput.oninput = () => {
       clearTimeout(t);
-      t = setTimeout(() => openDbFoodsSheet(searchInput.value, showHidden), 220);
+      t = setTimeout(() => {
+        const updated = renderListData(searchInput.value);
+        const subEl = document.getElementById('db-sub');
+        if (subEl) subEl.textContent = updated.sub;
+        listEl.innerHTML = updated.html;
+        bindRowActions();
+      }, 180);
     };
   }
   document.getElementById('db-new').onclick = () => openDbFoodEditor(null);
-  document.querySelectorAll('[data-edit-db]').forEach(b => {
-    b.onclick = () => {
-      const ref = b.dataset.editDb;
-      if (ref.startsWith('add-')) {
-        const addId = ref.slice(4);
-        const food = list.find(f => f._kind === 'added' && f._addId === addId);
-        if (food) openDbFoodEditor(food);
-      } else if (ref.startsWith('idx-')) {
-        const idx = parseInt(ref.slice(4), 10);
-        const food = list.find(f => f._kind === 'builtin' && f._index === idx);
-        if (food) openDbFoodEditor(food);
-      }
-    };
-  });
-  document.querySelectorAll('[data-restore-db]').forEach(b => {
-    b.onclick = async () => {
-      const ref = b.dataset.restoreDb;
-      if (!ref.startsWith('idx-')) return;
-      const idx = parseInt(ref.slice(4), 10);
-      await sd(`dbHidden:${state.user.userId}:${idx}`);
-      await refreshDbFoodsCache();
-      if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
-      toast('Ripristinato');
-      openDbFoodsSheet(filter, showHidden);
-    };
-  });
   const toggleBtn = document.getElementById('db-toggle-hidden');
-  if (toggleBtn) toggleBtn.onclick = () => openDbFoodsSheet(filter, !showHidden);
+  if (toggleBtn) toggleBtn.onclick = () => {
+    const cur = document.getElementById('db-search');
+    openDbFoodsSheet(cur ? cur.value : '', !showHidden);
+  };
 }
 
 function openDbFoodEditor(food) {
@@ -4437,72 +4496,92 @@ async function populateWeekSummaryCard() {
 
 function openTemplatesSheet(selectMealTarget = null, filter = '') {
   const all = state.templates;
-  const fLow = stripAccents(filter.trim().toLowerCase());
-  const list = !fLow ? all : all.filter(t => {
-    const itemNames = (t.items || []).map(it => (it.food && it.food.name) || '').join(' ');
-    const hay = stripAccents(((t.name || '') + ' ' + itemNames).toLowerCase());
-    return fLow.split(/\s+/).every(tok => hay.includes(tok));
-  });
+  const renderListData = (filterStr) => {
+    const fLow = stripAccents((filterStr || '').trim().toLowerCase());
+    const list = !fLow ? all : all.filter(t => {
+      const itemNames = (t.items || []).map(it => (it.food && it.food.name) || '').join(' ');
+      const hay = stripAccents(((t.name || '') + ' ' + itemNames).toLowerCase());
+      return fLow.split(/\s+/).every(tok => hay.includes(tok));
+    });
+    return {
+      sub: selectMealTarget
+        ? 'Tocca un pasto per aggiungerlo al diario.'
+        : `${all.length} pasti${fLow ? ` · ${list.length} risultati` : ' template riutilizzabili'}`,
+      html: all.length === 0
+        ? `<div class="subtle-list-empty">Nessun pasto salvato</div>`
+        : list.length === 0
+          ? `<div class="subtle-list-empty">Nessun risultato</div>`
+          : list.slice(0, 100).map(t => {
+              const kcal = t.items.reduce((s, it) => s + it.food.kcal * it.grams / 100, 0);
+              return `<div style="display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px solid var(--border);cursor:${selectMealTarget ? 'pointer' : 'default'}" ${selectMealTarget ? `data-pick-tpl="${esc(t.id)}"` : ''}>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:14.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.name)}</div>
+                  <div style="font-size:12px;color:var(--text-2);margin-top:2px">${t.items.length} alimenti · ${round(kcal)} kcal</div>
+                </div>
+                ${!selectMealTarget ? `
+                  <button class="icon-btn" data-edit-tpl="${esc(t.id)}" aria-label="Modifica">${I.edit}</button>
+                  <button class="icon-btn" data-del-tpl="${esc(t.id)}" aria-label="Elimina" style="color:var(--text-3)">${I.trash}</button>
+                ` : `<div class="chev">${I.right}</div>`}
+              </div>`;
+            }).join('') + (list.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${list.length - 100} altri risultati. Affina la ricerca.</div>` : ''),
+    };
+  };
+  const initial = renderListData(filter);
   const html = `
     <h2 class="sheet-title">Pasti salvati</h2>
-    <p class="sheet-sub">${selectMealTarget
-      ? 'Tocca un pasto per aggiungerlo al diario.'
-      : `${all.length} pasti${fLow ? ` · ${list.length} risultati per "${esc(filter)}"` : ' template riutilizzabili'}`}</p>
+    <p class="sheet-sub" id="tpl-sub">${initial.sub}</p>
     ${!selectMealTarget ? `<button class="btn btn-primary" id="new-tpl" style="margin-bottom:10px">${I.plus}<span>Nuovo pasto</span></button>` : ''}
     ${all.length > 0 ? `
     <div class="field" style="margin-bottom:10px">
-      <input class="input" id="tpl-search" placeholder="Cerca tra i tuoi pasti..." value="${esc(filter)}" autocomplete="off">
+      <input class="input" id="tpl-search" placeholder="Cerca tra i tuoi pasti..." value="${esc(filter)}" autocomplete="off" autocapitalize="off" autocorrect="off">
     </div>` : ''}
-    <div style="max-height:60vh;overflow-y:auto">
-      ${all.length === 0 ? `<div class="subtle-list-empty">Nessun pasto salvato</div>` : list.length === 0 ? `<div class="subtle-list-empty">Nessun risultato</div>` : list.slice(0, 100).map(t => {
-        const kcal = t.items.reduce((s, it) => s + it.food.kcal * it.grams / 100, 0);
-        return `<div style="display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px solid var(--border);cursor:${selectMealTarget ? 'pointer' : 'default'}" ${selectMealTarget ? `data-pick-tpl="${esc(t.id)}"` : ''}>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:14.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.name)}</div>
-            <div style="font-size:12px;color:var(--text-2);margin-top:2px">${t.items.length} alimenti · ${round(kcal)} kcal</div>
-          </div>
-          ${!selectMealTarget ? `
-            <button class="icon-btn" data-edit-tpl="${esc(t.id)}" aria-label="Modifica">${I.edit}</button>
-            <button class="icon-btn" data-del-tpl="${esc(t.id)}" aria-label="Elimina" style="color:var(--text-3)">${I.trash}</button>
-          ` : `<div class="chev">${I.right}</div>`}
-        </div>`;
-      }).join('') + (list.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${list.length - 100} altri risultati. Affina la ricerca.</div>` : '')}
-    </div>
+    <div id="tpl-list" style="max-height:60vh;overflow-y:auto">${initial.html}</div>
   `;
   openSheet(html);
+  const listEl = document.getElementById('tpl-list');
+  const bindRowActions = () => {
+    listEl.querySelectorAll('[data-edit-tpl]').forEach(b => {
+      b.onclick = () => openTemplateEditor(state.templates.find(t => t.id === b.dataset.editTpl));
+    });
+    listEl.querySelectorAll('[data-del-tpl]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('Eliminare questo pasto?')) return;
+        await deleteTemplate(b.dataset.delTpl);
+        await loadTemplates();
+        const cur = document.getElementById('tpl-search');
+        openTemplatesSheet(selectMealTarget, cur ? cur.value : '');
+      };
+    });
+    if (selectMealTarget) {
+      listEl.querySelectorAll('[data-pick-tpl]').forEach(el => {
+        el.onclick = async () => {
+          const t = state.templates.find(x => x.id === el.dataset.pickTpl);
+          if (!t) return;
+          await applyTemplate(t, selectMealTarget);
+          closeSheet();
+          toast(`"${t.name}" aggiunto`);
+          render();
+        };
+      });
+    }
+  };
+  bindRowActions();
   const searchInput = document.getElementById('tpl-search');
   if (searchInput) {
     let t;
     searchInput.oninput = () => {
       clearTimeout(t);
-      t = setTimeout(() => openTemplatesSheet(selectMealTarget, searchInput.value), 220);
+      t = setTimeout(() => {
+        const updated = renderListData(searchInput.value);
+        const subEl = document.getElementById('tpl-sub');
+        if (subEl) subEl.textContent = updated.sub;
+        listEl.innerHTML = updated.html;
+        bindRowActions();
+      }, 180);
     };
   }
   const nb = document.getElementById('new-tpl');
   if (nb) nb.onclick = () => openTemplateEditor(null);
-  document.querySelectorAll('[data-edit-tpl]').forEach(b => {
-    b.onclick = () => openTemplateEditor(state.templates.find(t => t.id === b.dataset.editTpl));
-  });
-  document.querySelectorAll('[data-del-tpl]').forEach(b => {
-    b.onclick = async () => {
-      if (!confirm('Eliminare questo pasto?')) return;
-      await deleteTemplate(b.dataset.delTpl);
-      await loadTemplates();
-      openTemplatesSheet(selectMealTarget, filter);
-    };
-  });
-  if (selectMealTarget) {
-    document.querySelectorAll('[data-pick-tpl]').forEach(el => {
-      el.onclick = async () => {
-        const t = state.templates.find(x => x.id === el.dataset.pickTpl);
-        if (!t) return;
-        await applyTemplate(t, selectMealTarget);
-        closeSheet();
-        toast(`"${t.name}" aggiunto`);
-        render();
-      };
-    });
-  }
 }
 
 function openTemplateEditor(tpl) {
@@ -4641,7 +4720,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.1';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -6076,6 +6155,14 @@ function bindApp() {
   document.querySelectorAll('.tab').forEach(t => {
     t.onclick = async () => {
       const next = t.dataset.tab;
+      // Se l'utente tappa "Oggi" mentre è già sulla tab today ma su un giorno diverso,
+      // riporta al giorno corrente (utility quando si è navigato avanti/indietro).
+      if (next === 'today' && state.tab === 'today' && state.date !== todayISO()) {
+        state.date = todayISO();
+        await loadDiary(state.date);
+        render();
+        return;
+      }
       // Se l'utente entra dalla tab bar senza pasto specificato:
       // - search: default colazione (può cambiarlo dal foglio quantità)
       // - photo: pasto suggerito dall'orario corrente
