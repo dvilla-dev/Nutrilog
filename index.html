@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.16.0 -->
+<!-- NUTRILOG_VERSION: 1.18.2 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -22,7 +22,9 @@
 <meta name="apple-mobile-web-app-title" content="NutriLog" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="format-detection" content="telephone=no" />
-<link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%230A0A0A%22/><circle cx=%2250%22 cy=%2250%22 r=%2228%22 fill=%22none%22 stroke=%22%231f2a00%22 stroke-width=%2210%22/><circle cx=%2250%22 cy=%2250%22 r=%2228%22 fill=%22none%22 stroke=%22%23C6FF00%22 stroke-width=%2210%22 stroke-linecap=%22round%22 stroke-dasharray=%22130 250%22 transform=%22rotate(-90 50 50)%22/></svg>" />
+<link rel="apple-touch-icon" sizes="192x192" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAADkUlEQVR42u3dy3HjQBBEwT7TCd3pvw1yiwpaoB8w09OVh2eAMJUAIjaIrcfj8ZJSKxdBAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASADk9Pkq1wGAWX0868e9Afwm1xeAY8d+BQAoADh+9FcDgAGAo0Z/JwAYAGg/+lUAYACg7fBXAwABgFbD3wUABABaDH83ABAA2Dr8LgDSIZTxA5CMoAwfgGQIZfwAJCMowwcgGUIZPwDJCMr4AUhGUMYPQDKCMn4AkhGU8QOQjKCM/76u/ukkBAC0Hv/q3xJDAMD28Xf5YT0EoQCSh98FAgAh4z/tcysQDAZg/BDEAjD8vhAAGDL+qV+hgwCAyPGvRACA8UMAwFnjT/0wbzoCAJ7ZX0YAwPjjS0ZQxq9kBLEAjH4dAgCMHwIAegAw8j0IAHD39xQAwN3fUwAA44cAgJUAjLkPAgDc/T0FAHD39xQAAAAAADB+CAC4AYDR9kYAAAAAAOD1x2sQAO7+ngIAAABALADjhwAAAAAAAAAAADD+IAQAAABAMgCvP16DAAAAAACM32sQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAEAD+FRiA3Qg8AeQJAIAAAEAAACAAABAAAAgAAAQAAAIAAAHgX4PlN8EACACvQQD4LhAAAADgNcj4AQAAAAAAAAAACIzf/xADAAAAbAQAQf/xA+Ap4O4PAAAAAOA1yOsPABAYPwAAAABAQTB4/AB4Crj7A+Ap4O4PwFIEHS++8QOwBED3Q0gYPwAbEJxyCO7+AFwO4MTDcPcH4N8ITj8Q4wfgzwAmHcyU8QOwCMHEwzF+AL5FkHBIxg/AbeNPRnDn+AG4GUHyoXUf/knXsRxeFgLXD4BYBK7dAAArD3IKBNdrGIDVh3oqBNdoMAAH7NrEA9hx0J0P3LUIBLDz4LscfvrfHw9g9wh2jCHt7wXgkFHcNZDJfxsAg4cysUl7GQcAAuOPBwCB8ccDgMD44wFAYPzxACAw/ngAIBg+ABAYPwAgGD4AEBg/ACD4IgYAwRCcNwCREJwvAJEQnCcAcRicGwBxGJwPAH6ZJQB8cFYAHILFdQBAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAALgIAkACQAJAAkDK6AvNWofxYtfvawAAAABJRU5ErkJggg==" />
+<link rel="icon" type="image/png" sizes="192x192" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAADkUlEQVR42u3dy3HjQBBEwT7TCd3pvw1yiwpaoB8w09OVh2eAMJUAIjaIrcfj8ZJSKxdBAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASADk9Pkq1wGAWX0868e9Afwm1xeAY8d+BQAoADh+9FcDgAGAo0Z/JwAYAGg/+lUAYACg7fBXAwABgFbD3wUABABaDH83ABAA2Dr8LgDSIZTxA5CMoAwfgGQIZfwAJCMowwcgGUIZPwDJCMr4AUhGUMYPQDKCMn4AkhGU8QOQjKCM/76u/ukkBAC0Hv/q3xJDAMD28Xf5YT0EoQCSh98FAgAh4z/tcysQDAZg/BDEAjD8vhAAGDL+qV+hgwCAyPGvRACA8UMAwFnjT/0wbzoCAJ7ZX0YAwPjjS0ZQxq9kBLEAjH4dAgCMHwIAegAw8j0IAHD39xQAwN3fUwAA44cAgJUAjLkPAgDc/T0FAHD39xQAAAAAADB+CAC4AYDR9kYAAAAAAOD1x2sQAO7+ngIAAABALADjhwAAAAAAAAAAADD+IAQAAABAMgCvP16DAAAAAACM32sQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAEAD+FRiA3Qg8AeQJAIAAAEAAACAAABAAAAgAAAQAAAIAAAHgX4PlN8EACACvQQD4LhAAAADgNcj4AQAAAAAAAAAACIzf/xADAAAAbAQAQf/xA+Ap4O4PAAAAAOA1yOsPABAYPwAAAABAQTB4/AB4Crj7A+Ap4O4PwFIEHS++8QOwBED3Q0gYPwAbEJxyCO7+AFwO4MTDcPcH4N8ITj8Q4wfgzwAmHcyU8QOwCMHEwzF+AL5FkHBIxg/AbeNPRnDn+AG4GUHyoXUf/knXsRxeFgLXD4BYBK7dAAArD3IKBNdrGIDVh3oqBNdoMAAH7NrEA9hx0J0P3LUIBLDz4LscfvrfHw9g9wh2jCHt7wXgkFHcNZDJfxsAg4cysUl7GQcAAuOPBwCB8ccDgMD44wFAYPzxACAw/ngAIBg+ABAYPwAgGD4AEBg/ACD4IgYAwRCcNwCREJwvAJEQnCcAcRicGwBxGJwPAH6ZJQB8cFYAHILFdQBAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAALgIAkACQAJAAkDK6AvNWofxYtfvawAAAABJRU5ErkJggg==" />
+<link rel="shortcut icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAADkUlEQVR42u3dy3HjQBBEwT7TCd3pvw1yiwpaoB8w09OVh2eAMJUAIjaIrcfj8ZJSKxdBAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASADk9Pkq1wGAWX0868e9Afwm1xeAY8d+BQAoADh+9FcDgAGAo0Z/JwAYAGg/+lUAYACg7fBXAwABgFbD3wUABABaDH83ABAA2Dr8LgDSIZTxA5CMoAwfgGQIZfwAJCMowwcgGUIZPwDJCMr4AUhGUMYPQDKCMn4AkhGU8QOQjKCM/76u/ukkBAC0Hv/q3xJDAMD28Xf5YT0EoQCSh98FAgAh4z/tcysQDAZg/BDEAjD8vhAAGDL+qV+hgwCAyPGvRACA8UMAwFnjT/0wbzoCAJ7ZX0YAwPjjS0ZQxq9kBLEAjH4dAgCMHwIAegAw8j0IAHD39xQAwN3fUwAA44cAgJUAjLkPAgDc/T0FAHD39xQAAAAAADB+CAC4AYDR9kYAAAAAAOD1x2sQAO7+ngIAAABALADjhwAAAAAAAAAAADD+IAQAAABAMgCvP16DAAAAAACM32sQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAEAD+FRiA3Qg8AeQJAIAAAEAAACAAABAAAAgAAAQAAAIAAAHgX4PlN8EACACvQQD4LhAAAADgNcj4AQAAAAAAAAAACIzf/xADAAAAbAQAQf/xA+Ap4O4PAAAAAOA1yOsPABAYPwAAAABAQTB4/AB4Crj7A+Ap4O4PwFIEHS++8QOwBED3Q0gYPwAbEJxyCO7+AFwO4MTDcPcH4N8ITj8Q4wfgzwAmHcyU8QOwCMHEwzF+AL5FkHBIxg/AbeNPRnDn+AG4GUHyoXUf/knXsRxeFgLXD4BYBK7dAAArD3IKBNdrGIDVh3oqBNdoMAAH7NrEA9hx0J0P3LUIBLDz4LscfvrfHw9g9wh2jCHt7wXgkFHcNZDJfxsAg4cysUl7GQcAAuOPBwCB8ccDgMD44wFAYPzxACAw/ngAIBg+ABAYPwAgGD4AEBg/ACD4IgYAwRCcNwCREJwvAJEQnCcAcRicGwBxGJwPAH6ZJQB8cFYAHILFdQBAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAALgIAkACQAJAAkDK6AvNWofxYtfvawAAAABJRU5ErkJggg==" />
 <title>NutriLog</title>
 <style>
   /* ═══════════════════════════════════════════════════
@@ -464,10 +466,27 @@
     width: 6px; height: 6px; border-radius: 50%;
     background: var(--accent);
   }
+  .meal-kcal-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
   .meal-kcal {
-    font-size: 12px;
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  .meal-macros {
+    font-size: 11.5px;
     color: var(--text-2);
     font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    font-weight: 500;
+    margin-top: 1px;
   }
   .meal-copy-btn {
     width: 28px; height: 28px;
@@ -1920,6 +1939,12 @@ function scheduleCloudAutoSync() {
   if (!cfg || !cfg.autoSync) return;
   if (_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
   _cloudSyncTimer = setTimeout(async () => {
+    // Skip se siamo nel mezzo di un pull (evita di sovrascrivere il cloud
+    // appena scaricato con i dati locali)
+    if (state._suspendAutoSync) {
+      dlog('auto-sync cloud: skip (pull in corso)');
+      return;
+    }
     // Skip se offline
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       dlog('auto-sync cloud: skip (offline) - reschedule on online');
@@ -1932,7 +1957,7 @@ function scheduleCloudAutoSync() {
     } catch (e) {
       dlog('auto-sync cloud FAILED: ' + e.message);
     }
-  }, 15000); // 15 secondi di inattività prima del push
+  }, 5000); // 5 secondi di inattività prima del push (era 15s)
 }
 
 // Riprova sync quando torna la connessione
@@ -1940,6 +1965,15 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     dlog('Online: ripianifico sync cloud');
     scheduleCloudAutoSync();
+  });
+  // Quando l'app torna in foreground (es. cambio app + torno a NutriLog),
+  // ricontrolla se ci sono nuovi dati nel cloud
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && state.user && state.user.userId) {
+      // Reset flag così il pull va a buon fine
+      _cloudAutoPullDone = false;
+      cloudPullAuto().catch(e => dlog('AUTO-PULL on visible FAIL: ' + e.message));
+    }
   });
 }
 async function addFoodToDiary(meal, food, grams) {
@@ -2033,6 +2067,19 @@ function computeTotals() {
 }
 function mealKcal(meal) {
   return (state.diary[meal] || []).reduce((s, e) => s + e.kcal * e.grams / 100, 0);
+}
+function mealMacros(meal) {
+  // Restituisce { kcal, protein, carbs, fat } totali per il pasto (in grammi per macros)
+  const items = state.diary[meal] || [];
+  let kcal = 0, protein = 0, carbs = 0, fat = 0;
+  for (const e of items) {
+    const factor = (e.grams || 0) / 100;
+    kcal += (e.kcal || 0) * factor;
+    protein += (e.protein || 0) * factor;
+    carbs += (e.carbs || 0) * factor;
+    fat += (e.fat || 0) * factor;
+  }
+  return { kcal, protein, carbs, fat };
 }
 
 /* ─── CUSTOM FOODS ───────────────────────────────────────── */
@@ -2683,6 +2730,107 @@ async function boot() {
     setTimeout(() => {
       pruneOldDiaryEntries().catch(e => dlog('PRUNE auto FAIL: ' + e.message));
     }, 2000);
+    // Auto-pull cloud subito dopo aver mostrato la dashboard:
+    // mostriamo prima i dati locali (UX immediata), poi se il cloud
+    // ha versione più recente la applichiamo e re-render.
+    setTimeout(() => {
+      cloudPullAuto().catch(e => dlog('AUTO-PULL outer FAIL: ' + e.message));
+    }, 200);
+  }
+}
+
+/* ─── CLOUD AUTO-PULL ALL'AVVIO ─────────────────────────
+   Strategy:
+   - All'apertura dell'app, dopo aver caricato i dati locali,
+     facciamo un pull silenzioso dal cloud
+   - Confronta savedAt del cloud con lastSync locale
+   - Se cloud più recente → sostituisci i dati locali con quelli
+     del cloud (cloud vince), poi ricarica l'UI
+   - Tutto silenzioso: nessuna conferma, nessun toast invadente,
+     solo log diagnostica e mini-toast neutro alla fine se ha aggiornato
+   ──────────────────────────────────────────────────────── */
+let _cloudAutoPullDone = false;
+async function cloudPullAuto() {
+  if (_cloudAutoPullDone) return;
+  if (!state.user || !state.user.userId) return;
+  if (!cloudBackup || !cloudBackup.isConfigured || !cloudBackup.isConfigured()) {
+    dlog('AUTO-PULL: skip (cloud non configurato)');
+    return;
+  }
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    dlog('AUTO-PULL: skip (offline)');
+    return;
+  }
+  _cloudAutoPullDone = true;
+  // Sospendi auto-sync push mentre stiamo facendo il pull, per evitare
+  // che le scritture indotte dal pull triggerino un push immediato che
+  // sovrascrive il cloud appena scaricato
+  state._suspendAutoSync = true;
+  try {
+    dlog('AUTO-PULL: scarico backup cloud...');
+    const wrapped = await cloudBackup.pull(APP_ID);
+    if (!wrapped || !wrapped.payload) {
+      dlog('AUTO-PULL: nessun backup remoto');
+      return;
+    }
+    const cloudSavedAt = wrapped.savedAt ? new Date(wrapped.savedAt).getTime() : 0;
+    const cfg = cloudBackup.getConfig && cloudBackup.getConfig();
+    const localLastSync = (cfg && cfg.lastSync && cfg.lastSync[APP_ID])
+      ? new Date(cfg.lastSync[APP_ID]).getTime()
+      : 0;
+
+    // Se il cloud non è più recente del nostro ultimo sync, niente da fare
+    if (cloudSavedAt && localLastSync && cloudSavedAt <= localLastSync) {
+      dlog('AUTO-PULL: locale già aggiornato (cloud savedAt=' + new Date(cloudSavedAt).toISOString() + ')');
+      return;
+    }
+
+    const data = wrapped.payload;
+    if (!data || data.format !== 'nutrilog-backup') {
+      dlog('AUTO-PULL: backup formato non valido');
+      return;
+    }
+
+    // Cloud è più recente: cancella i dati locali dell'utente e
+    // importa quelli del cloud (cloud vince). Manteniamo session e config.
+    const userId = state.user.userId;
+    const prefixes = [
+      `diary:${userId}:`,
+      `customFoods:${userId}:`,
+      `mealTemplates:${userId}:`,
+      `dbOverrides:${userId}:`,
+      `dbAdditions:${userId}:`,
+      `dbHidden:${userId}:`,
+    ];
+    for (const p of prefixes) {
+      const keys = await sl(p);
+      for (const k of keys) await sd(k);
+    }
+    // Goals key è singolo
+    await sd(`goals:${userId}`);
+
+    // Importa i dati del cloud in modalità replace (dato che abbiamo cancellato tutto)
+    await importUserData(data, { mode: 'replace' });
+
+    // Ricarica tutto in memoria
+    await loadAll();
+
+    // Aggiorna lastSync con il timestamp del cloud per non rifare il pull al prossimo boot
+    const c2 = cloudBackup.getConfig() || {};
+    c2.lastSync = c2.lastSync || {};
+    c2.lastSync[APP_ID] = new Date(cloudSavedAt).toISOString();
+    cloudBackup.setConfig(c2);
+
+    dlog('AUTO-PULL: dati cloud applicati (cloud savedAt=' + new Date(cloudSavedAt).toISOString() + ')');
+    // Discreto feedback all'utente solo se siamo già nell'app
+    if (state.screen === 'app') {
+      toast('Dati sincronizzati');
+      render();
+    }
+  } catch (e) {
+    dlog('AUTO-PULL FAIL: ' + (e.message || e));
+  } finally {
+    state._suspendAutoSync = false;
   }
 }
 
@@ -3015,12 +3163,16 @@ function renderToday() {
 }
 function renderMeal(key, title) {
   const items = state.diary[key] || [];
-  const kcal = mealKcal(key);
+  const m = mealMacros(key);
+  const hasFood = items.length > 0;
   return `<div class="meal" data-meal="${key}">
     <div class="meal-head">
       <div class="meal-title"><span class="dot"></span>${esc(title)}</div>
       <div style="display:flex;align-items:center;gap:8px">
-        <div class="meal-kcal">${round(kcal)} kcal</div>
+        <div class="meal-kcal-wrap">
+          <div class="meal-kcal">${round(m.kcal)} kcal</div>
+          ${hasFood ? `<div class="meal-macros"><span style="color:var(--protein)">P ${round(m.protein, 1)}g</span> · <span style="color:var(--carbs)">C ${round(m.carbs, 1)}g</span> · <span style="color:var(--fat)">G ${round(m.fat, 1)}g</span></div>` : ''}
+        </div>
         <button class="meal-copy-btn" data-copy-meal="${key}" aria-label="Copia da giorno precedente" title="Copia da un altro giorno">${I.copy}</button>
       </div>
     </div>
@@ -4137,10 +4289,13 @@ function openDbFoodEditor(food) {
       <div class="field"><label>Marca / categoria (opzionale)</label><input class="input" name="brand" value="${esc(f.brand || '')}" autocomplete="off"></div>
 
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
-        <div class="field"><label>Kcal / 100g</label><input class="input" name="kcal" type="number" inputmode="decimal" step="0.1" min="0" value="${f.kcal}"></div>
-        <div class="field"><label>Proteine (g)</label><input class="input" name="protein" type="number" inputmode="decimal" step="0.1" min="0" value="${f.protein}"></div>
-        <div class="field"><label>Carboidrati (g)</label><input class="input" name="carbs" type="number" inputmode="decimal" step="0.1" min="0" value="${f.carbs}"></div>
-        <div class="field"><label>Grassi (g)</label><input class="input" name="fat" type="number" inputmode="decimal" step="0.1" min="0" value="${f.fat}"></div>
+        <div class="field">
+          <label style="display:flex;align-items:center;justify-content:space-between"><span>Kcal / 100g</span><span style="font-size:9.5px;color:var(--text-3);font-weight:500;text-transform:uppercase;letter-spacing:0.06em">Auto · 4·4·9</span></label>
+          <input class="input" name="kcal" id="db-food-kcal" type="number" inputmode="decimal" step="0.1" min="0" value="${f.kcal}" readonly style="opacity:0.85;cursor:not-allowed">
+        </div>
+        <div class="field"><label>Proteine (g)</label><input class="input" name="protein" type="number" inputmode="decimal" step="0.1" min="0" value="${f.protein}" data-auto-kcal></div>
+        <div class="field"><label>Carboidrati (g)</label><input class="input" name="carbs" type="number" inputmode="decimal" step="0.1" min="0" value="${f.carbs}" data-auto-kcal></div>
+        <div class="field"><label>Grassi (g)</label><input class="input" name="fat" type="number" inputmode="decimal" step="0.1" min="0" value="${f.fat}" data-auto-kcal></div>
         <div class="field"><label>Fibre (g)</label><input class="input" name="fiber" type="number" inputmode="decimal" step="0.1" min="0" value="${f.fiber}"></div>
         <div class="field"><label>Zuccheri (g)</label><input class="input" name="sugar" type="number" inputmode="decimal" step="0.1" min="0" value="${f.sugar}"></div>
       </div>
@@ -4155,8 +4310,25 @@ function openDbFoodEditor(food) {
   `;
   openSheet(html);
   document.getElementById('db-cancel').onclick = () => openDbFoodsSheet();
+
+  // Auto-calcolo kcal da macros (formula 4·4·9)
+  const dbKcalInput = document.getElementById('db-food-kcal');
+  const dbForm = document.getElementById('db-food-form');
+  const recalcDbKcal = () => {
+    if (!dbKcalInput || !dbForm) return;
+    const fd = new FormData(dbForm);
+    const p = parseFloat(fd.get('protein')) || 0;
+    const c = parseFloat(fd.get('carbs')) || 0;
+    const ft = parseFloat(fd.get('fat')) || 0;
+    dbKcalInput.value = Math.round(p * 4 + c * 4 + ft * 9);
+  };
+  dbForm.querySelectorAll('[data-auto-kcal]').forEach(inp => {
+    inp.addEventListener('input', recalcDbKcal);
+  });
+
   document.getElementById('db-food-form').onsubmit = async (e) => {
     e.preventDefault();
+    recalcDbKcal();
     const fd = new FormData(e.target);
     const userId = state.user.userId;
     const data = {
@@ -4227,11 +4399,14 @@ function openCustomFoodEditor(food) {
     <form id="cf-form">
       <div class="field"><label>Nome</label><input class="input" name="name" value="${esc(f.name)}" required></div>
       <div class="field"><label>Marca (opzionale)</label><input class="input" name="brand" value="${esc(f.brand || '')}"></div>
-      <div class="field"><label>Calorie (kcal / 100g)</label><input class="input" type="number" step="0.1" min="0" name="kcal" value="${f.kcal}" required></div>
+      <div class="field">
+        <label style="display:flex;align-items:center;justify-content:space-between"><span>Calorie (kcal / 100g)</span><span style="font-size:9.5px;color:var(--text-3);font-weight:500;text-transform:uppercase;letter-spacing:0.06em">Auto · 4·4·9</span></label>
+        <input class="input" type="number" step="0.1" min="0" name="kcal" id="cf-kcal" value="${f.kcal}" readonly style="opacity:0.85;cursor:not-allowed">
+      </div>
       <div class="row-3">
-        <div class="field"><label>Proteine</label><input class="input" type="number" step="0.1" min="0" name="protein" value="${f.protein}"></div>
-        <div class="field"><label>Carb</label><input class="input" type="number" step="0.1" min="0" name="carbs" value="${f.carbs}"></div>
-        <div class="field"><label>Grassi</label><input class="input" type="number" step="0.1" min="0" name="fat" value="${f.fat}"></div>
+        <div class="field"><label>Proteine</label><input class="input" type="number" step="0.1" min="0" name="protein" value="${f.protein}" data-auto-kcal></div>
+        <div class="field"><label>Carb</label><input class="input" type="number" step="0.1" min="0" name="carbs" value="${f.carbs}" data-auto-kcal></div>
+        <div class="field"><label>Grassi</label><input class="input" type="number" step="0.1" min="0" name="fat" value="${f.fat}" data-auto-kcal></div>
       </div>
       <div class="row-3">
         <div class="field"><label>Fibre</label><input class="input" type="number" step="0.1" min="0" name="fiber" value="${f.fiber}"></div>
@@ -4248,8 +4423,25 @@ function openCustomFoodEditor(food) {
   `;
   openSheet(html);
   document.getElementById('cf-back').onclick = () => { state.editFood = null; openCustomFoodsSheet(); };
+
+  // Auto-calcolo kcal da macros (formula 4·4·9)
+  const cfKcalInput = document.getElementById('cf-kcal');
+  const cfForm = document.getElementById('cf-form');
+  const recalcCfKcal = () => {
+    if (!cfKcalInput || !cfForm) return;
+    const fd = new FormData(cfForm);
+    const p = num(fd.get('protein'));
+    const c = num(fd.get('carbs'));
+    const ft = num(fd.get('fat'));
+    cfKcalInput.value = Math.round(p * 4 + c * 4 + ft * 9);
+  };
+  cfForm.querySelectorAll('[data-auto-kcal]').forEach(inp => {
+    inp.addEventListener('input', recalcCfKcal);
+  });
+
   document.getElementById('cf-form').onsubmit = async (e) => {
     e.preventDefault();
+    recalcCfKcal();
     const fd = new FormData(e.target);
     const payload = {
       id: food ? food.id : null,
@@ -4757,7 +4949,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.16.0';
+const APP_VERSION = '1.18.2';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -6092,6 +6284,22 @@ function openPhotoConfirmSheet(food, portion, meal, confidence, notes) {
   `);
 
   document.getElementById('pc-cancel').onclick = closeSheet;
+
+  // Auto-calcolo kcal quando l'utente modifica i macros (ma se modifica
+  // direttamente kcal, quel valore vince fino al prossimo cambio macro)
+  const pcKcal = document.getElementById('pc-kcal');
+  const pcProtein = document.getElementById('pc-protein');
+  const pcCarbs = document.getElementById('pc-carbs');
+  const pcFat = document.getElementById('pc-fat');
+  const recalcPcKcal = () => {
+    const p = num(pcProtein.value);
+    const c = num(pcCarbs.value);
+    const f = num(pcFat.value);
+    pcKcal.value = Math.round((p * 4 + c * 4 + f * 9) * 10) / 10;
+  };
+  [pcProtein, pcCarbs, pcFat].forEach(inp => {
+    inp.addEventListener('input', recalcPcKcal);
+  });
   document.getElementById('pc-confirm').onclick = async () => {
     const name = document.getElementById('pc-name').value.trim();
     if (!name) { toast('Inserisci un nome'); return; }
