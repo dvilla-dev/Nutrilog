@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.14.5 -->
+<!-- NUTRILOG_VERSION: 1.16.0 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -3819,13 +3819,16 @@ function renderGoalsSheet() {
 
     <form id="goals-form">
       <div class="field">
-        <label>Calorie (kcal)</label>
-        <input class="input" type="number" name="calories" min="500" max="6000" value="${effective.calories}" required>
+        <label style="display:flex;align-items:center;justify-content:space-between">
+          <span>Calorie (kcal)</span>
+          <span style="font-size:10px;color:var(--text-3);font-weight:500;text-transform:uppercase;letter-spacing:0.06em">Auto · 4·4·9</span>
+        </label>
+        <input class="input" type="number" name="calories" min="0" max="9999" value="${effective.calories}" id="goals-calories" readonly style="opacity:0.85;cursor:not-allowed">
       </div>
       <div class="row-3">
-        <div class="field"><label>Proteine (g)</label><input class="input" type="number" name="protein" min="0" max="500" value="${effective.protein}" required></div>
-        <div class="field"><label>Carb (g)</label><input class="input" type="number" name="carbs" min="0" max="800" value="${effective.carbs}" required></div>
-        <div class="field"><label>Grassi (g)</label><input class="input" type="number" name="fat" min="0" max="300" value="${effective.fat}" required></div>
+        <div class="field"><label>Proteine (g)</label><input class="input" type="number" name="protein" min="0" max="500" value="${effective.protein}" data-auto-kcal required></div>
+        <div class="field"><label>Carb (g)</label><input class="input" type="number" name="carbs" min="0" max="800" value="${effective.carbs}" data-auto-kcal required></div>
+        <div class="field"><label>Grassi (g)</label><input class="input" type="number" name="fat" min="0" max="300" value="${effective.fat}" data-auto-kcal required></div>
       </div>
       <div class="row-3">
         <div class="field"><label>Fibre (g)</label><input class="input" type="number" name="fiber" min="0" max="200" value="${effective.fiber}" required></div>
@@ -3872,6 +3875,21 @@ function renderGoalsSheet() {
   // Form reference (presets rimossi: solo personalizzazione manuale)
   const form = document.getElementById('goals-form');
 
+  // Auto-calcolo calorie da macros (formula 4·4·9):
+  // proteine × 4 + carbo × 4 + grassi × 9
+  const kcalInput = document.getElementById('goals-calories');
+  const recalcKcal = () => {
+    const fd = new FormData(form);
+    const p = num(fd.get('protein'));
+    const c = num(fd.get('carbs'));
+    const f = num(fd.get('fat'));
+    const total = Math.round(p * 4 + c * 4 + f * 9);
+    if (kcalInput) kcalInput.value = total;
+  };
+  form.querySelectorAll('[data-auto-kcal]').forEach(inp => {
+    inp.addEventListener('input', recalcKcal);
+  });
+
   // Reset override
   const resetBtn = document.getElementById('goals-reset-day');
   if (resetBtn) {
@@ -3884,6 +3902,8 @@ function renderGoalsSheet() {
   // Submit
   form.onsubmit = async (e) => {
     e.preventDefault();
+    // Forza ricalcolo prima del submit per essere sicuri
+    recalcKcal();
     const fd = new FormData(form);
     const values = {};
     for (const k of ['calories','protein','carbs','fat','fiber','sugar','sodium']) values[k] = num(fd.get(k));
@@ -3905,7 +3925,7 @@ function openCustomFoodsSheet(filter = '') {
   const renderListHtml = (filterStr) => {
     const fLow = stripAccents((filterStr || '').trim().toLowerCase());
     const list = !fLow ? all : all.filter(f => {
-      const hay = stripAccents(((f.name || '') + ' ' + (f.brand || '')).toLowerCase());
+      const hay = stripAccents(((f.name || '') + ' ' + (f.brand || '') + ' ' + (f.notes || '')).toLowerCase());
       return fLow.split(/\s+/).every(t => hay.includes(t));
     });
     return {
@@ -3918,8 +3938,9 @@ function openCustomFoodsSheet(filter = '') {
           : list.slice(0, 100).map(f => `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px solid var(--border)">
               <div style="flex:1;min-width:0">
-                <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}</div>
+                <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}${f.notes ? ` <span style="color:var(--accent);font-size:11px" title="${esc(f.notes)}">●</span>` : ''}</div>
                 <div style="font-size:12px;color:var(--text-2);margin-top:2px">${esc(f.brand || 'Senza marca')} · ${round(f.kcal)} kcal/100g</div>
+                ${f.notes ? `<div style="font-size:11px;color:var(--text-3);margin-top:3px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(f.notes)}</div>` : ''}
               </div>
               <button class="icon-btn" data-edit-custom="${esc(f.id)}" aria-label="Modifica">${I.edit}</button>
               <button class="icon-btn" data-del-custom="${esc(f.id)}" aria-label="Elimina" style="color:var(--text-3)">${I.trash}</button>
@@ -4199,7 +4220,7 @@ function openDbFoodEditor(food) {
 
 function openCustomFoodEditor(food) {
   state.editFood = food;
-  const f = food || { name: '', brand: '', kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 };
+  const f = food || { name: '', brand: '', kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, notes: '' };
   const html = `
     <h2 class="sheet-title">${food ? 'Modifica' : 'Nuovo'} alimento</h2>
     <p class="sheet-sub">Valori nutrizionali per 100g.</p>
@@ -4216,6 +4237,10 @@ function openCustomFoodEditor(food) {
         <div class="field"><label>Fibre</label><input class="input" type="number" step="0.1" min="0" name="fiber" value="${f.fiber}"></div>
         <div class="field"><label>Zucch.</label><input class="input" type="number" step="0.1" min="0" name="sugar" value="${f.sugar}"></div>
         <div class="field"><label>Sodio (mg)</label><input class="input" type="number" step="1" min="0" name="sodium" value="${f.sodium}"></div>
+      </div>
+      <div class="field">
+        <label>Note <span style="color:var(--text-3);font-weight:400;text-transform:none;letter-spacing:0">(opzionale)</span></label>
+        <textarea class="input" name="notes" rows="3" placeholder="Es. da Esselunga, ricetta della nonna, allergico al lattosio, ecc." style="resize:vertical;min-height:64px;font-family:inherit;line-height:1.5">${esc(f.notes || '')}</textarea>
       </div>
       <button class="btn btn-primary" type="submit">Salva</button>
       <button class="btn btn-ghost" type="button" id="cf-back" style="margin-top:6px">Annulla</button>
@@ -4237,6 +4262,7 @@ function openCustomFoodEditor(food) {
       fiber: num(fd.get('fiber')),
       sugar: num(fd.get('sugar')),
       sodium: num(fd.get('sodium')),
+      notes: (fd.get('notes') || '').trim(),
     };
     if (!payload.name) { toast('Nome obbligatorio'); return; }
     await saveCustomFood(payload);
@@ -4731,7 +4757,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.14.5';
+const APP_VERSION = '1.16.0';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -6006,12 +6032,38 @@ function openPhotoConfirmSheet(food, portion, meal, confidence, notes) {
 
     <div class="card-flat" style="margin-bottom:14px;padding:14px">
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;text-align:center">
-        <div><div style="font-size:17px;font-weight:700;color:var(--accent)">${round(food.kcal)}</div><div style="font-size:10px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:2px">kcal</div></div>
-        <div><div style="font-size:17px;font-weight:700;color:var(--protein)">${round(food.protein, 1)}</div><div style="font-size:10px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:2px">Prot</div></div>
-        <div><div style="font-size:17px;font-weight:700;color:var(--carbs)">${round(food.carbs, 1)}</div><div style="font-size:10px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:2px">Carb</div></div>
-        <div><div style="font-size:17px;font-weight:700;color:var(--fat)">${round(food.fat, 1)}</div><div style="font-size:10px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:2px">Grassi</div></div>
+        <div>
+          <input class="input pc-macro" type="number" min="0" max="9999" step="0.1" id="pc-kcal" value="${round(food.kcal, 1)}" style="font-size:17px;font-weight:700;color:var(--accent);text-align:center;padding:6px 4px;background:transparent;border:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:4px">kcal</div>
+        </div>
+        <div>
+          <input class="input pc-macro" type="number" min="0" max="200" step="0.1" id="pc-protein" value="${round(food.protein, 1)}" style="font-size:17px;font-weight:700;color:var(--protein);text-align:center;padding:6px 4px;background:transparent;border:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:4px">Prot</div>
+        </div>
+        <div>
+          <input class="input pc-macro" type="number" min="0" max="200" step="0.1" id="pc-carbs" value="${round(food.carbs, 1)}" style="font-size:17px;font-weight:700;color:var(--carbs);text-align:center;padding:6px 4px;background:transparent;border:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:4px">Carb</div>
+        </div>
+        <div>
+          <input class="input pc-macro" type="number" min="0" max="200" step="0.1" id="pc-fat" value="${round(food.fat, 1)}" style="font-size:17px;font-weight:700;color:var(--fat);text-align:center;padding:6px 4px;background:transparent;border:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:4px">Grassi</div>
+        </div>
       </div>
-      <div style="font-size:10px;color:var(--text-3);text-align:center;margin-top:8px;letter-spacing:0.1em;text-transform:uppercase">Per 100g</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center;margin-top:10px">
+        <div>
+          <input class="input pc-macro" type="number" min="0" max="200" step="0.1" id="pc-fiber" value="${round(food.fiber, 1)}" style="font-size:14px;font-weight:600;color:var(--text-2);text-align:center;padding:5px 4px;background:transparent;border:1px solid var(--border)">
+          <div style="font-size:9.5px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:3px">Fibre</div>
+        </div>
+        <div>
+          <input class="input pc-macro" type="number" min="0" max="200" step="0.1" id="pc-sugar" value="${round(food.sugar, 1)}" style="font-size:14px;font-weight:600;color:var(--text-2);text-align:center;padding:5px 4px;background:transparent;border:1px solid var(--border)">
+          <div style="font-size:9.5px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:3px">Zucch</div>
+        </div>
+        <div>
+          <input class="input pc-macro" type="number" min="0" max="10000" step="1" id="pc-sodium" value="${round(food.sodium, 0)}" style="font-size:14px;font-weight:600;color:var(--text-2);text-align:center;padding:5px 4px;background:transparent;border:1px solid var(--border)">
+          <div style="font-size:9.5px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:3px">Sodio mg</div>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--text-3);text-align:center;margin-top:10px;letter-spacing:0.1em;text-transform:uppercase">Per 100g · tap per modificare</div>
     </div>
 
     <div class="field">
@@ -6048,12 +6100,32 @@ function openPhotoConfirmSheet(food, portion, meal, confidence, notes) {
     if (grams <= 0) { toast('Quantità non valida'); return; }
     const saveCustom = document.getElementById('pc-save-custom').checked;
 
-    const finalFood = { ...food, name, brand };
+    // Leggi i valori macro/micro modificati dall'utente
+    const editedKcal = round(num(document.getElementById('pc-kcal').value, food.kcal), 1);
+    const editedProtein = round(num(document.getElementById('pc-protein').value, food.protein), 1);
+    const editedCarbs = round(num(document.getElementById('pc-carbs').value, food.carbs), 1);
+    const editedFat = round(num(document.getElementById('pc-fat').value, food.fat), 1);
+    const editedFiber = round(num(document.getElementById('pc-fiber').value, food.fiber), 1);
+    const editedSugar = round(num(document.getElementById('pc-sugar').value, food.sugar), 1);
+    const editedSodium = round(num(document.getElementById('pc-sodium').value, food.sodium), 0);
+
+    const finalFood = {
+      ...food,
+      name,
+      brand,
+      kcal: editedKcal,
+      protein: editedProtein,
+      carbs: editedCarbs,
+      fat: editedFat,
+      fiber: editedFiber,
+      sugar: editedSugar,
+      sodium: editedSodium,
+    };
     if (saveCustom) {
       const saved = await saveCustomFood({
         name, brand,
-        kcal: food.kcal, protein: food.protein, carbs: food.carbs, fat: food.fat,
-        fiber: food.fiber, sugar: food.sugar, sodium: food.sodium,
+        kcal: editedKcal, protein: editedProtein, carbs: editedCarbs, fat: editedFat,
+        fiber: editedFiber, sugar: editedSugar, sodium: editedSodium,
       });
       await loadCustomFoods();
       finalFood.id = saved.id;
