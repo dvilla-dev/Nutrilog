@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.18.2 -->
+<!-- NUTRILOG_VERSION: 1.23.1 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -110,7 +110,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding-top: 4px;
-    padding-bottom: calc(72px + var(--safe-bot));
+    padding-bottom: calc(60px + var(--safe-bot));
     -webkit-overflow-scrolling: touch;
     animation: fadeIn var(--dur) var(--ease);
   }
@@ -165,15 +165,15 @@
     border-top: 1px solid var(--border-strong);
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    padding: 8px 4px calc(8px + var(--safe-bot));
+    padding: 6px 4px max(2px, var(--safe-bot));
     gap: 2px;
     z-index: 10;
   }
   .tab {
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    gap: 3px;
-    padding: 7px 2px;
+    gap: 2px;
+    padding: 4px 2px;
     border-radius: 10px;
     color: var(--text-3);
     font-size: 10px;
@@ -659,6 +659,41 @@
   }
   .search-input:focus { border-color: var(--border-strong); }
 
+  /* AI Search Button — ricerca diretta tramite AI */
+  .ai-search-btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 11px 14px;
+    background: linear-gradient(135deg, rgba(0, 224, 255, 0.10), rgba(198, 255, 0, 0.08));
+    border: 1px solid rgba(0, 224, 255, 0.3);
+    border-radius: var(--r-btn);
+    color: #00E0FF;
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all var(--dur) var(--ease);
+  }
+  .ai-search-btn strong {
+    color: var(--text);
+    font-weight: 600;
+    max-width: 60%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ai-search-btn:active { transform: scale(0.99); background: linear-gradient(135deg, rgba(0, 224, 255, 0.18), rgba(198, 255, 0, 0.14)); }
+  .ai-search-btn.loading {
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  .ai-search-btn.loading svg {
+    animation: spin 1s linear infinite;
+  }
+
   .target-chip {
     background: var(--accent-dim);
     color: var(--accent);
@@ -841,6 +876,40 @@
     border-color: var(--accent);
   }
 
+  /* ─── PORTION BAR ─────────────────────────────────── */
+  .portion-bar {
+    display: grid;
+    grid-template-columns: 44px 1fr 1fr 1fr 44px;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .portion-btn {
+    padding: 10px 4px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-btn);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    transition: all var(--dur) var(--ease);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+  }
+  .portion-btn:active {
+    transform: scale(0.96);
+    background: var(--surface-3);
+  }
+  .portion-btn.portion-num.sel {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--accent);
+  }
+  .portion-btn[data-portion-op] {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text-2);
+  }
+
   /* ═══════════════════════════════════════════════════
      LOGIN
      ═══════════════════════════════════════════════════ */
@@ -985,7 +1054,7 @@
   .fab {
     position: fixed;
     right: max(20px, env(safe-area-inset-right));
-    bottom: calc(96px + var(--safe-bot));
+    bottom: calc(80px + var(--safe-bot));
     width: 56px; height: 56px;
     border-radius: 50%;
     background: var(--accent);
@@ -1002,6 +1071,39 @@
   /* Mobile-safe positioning of FAB inside max-width container */
   @media (min-width: 521px) {
     .fab { right: calc(50% - 240px); }
+  }
+
+  /* FAB Refresh: secondario, sopra il FAB principale */
+  .fab-refresh {
+    position: fixed;
+    right: max(20px, env(safe-area-inset-right));
+    bottom: calc(148px + var(--safe-bot));
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--text-2);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 49;
+    transition: transform var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
+  }
+  .fab-refresh svg { width: 20px; height: 20px; }
+  .fab-refresh:active { transform: scale(0.92); }
+  .fab-refresh.spinning svg {
+    animation: spin 1s linear infinite;
+  }
+  .fab-refresh.success {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--accent);
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @media (min-width: 521px) {
+    .fab-refresh { right: calc(50% - 240px); }
   }
 
   .fab-menu {
@@ -1160,6 +1262,63 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     margin-top: 1px;
+  }
+
+  /* Step 2: selezione alimenti da copiare */
+  .copy-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 50vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .copy-item-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border: 1.5px solid var(--border);
+    border-radius: var(--r-btn);
+    cursor: pointer;
+    transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+  }
+  .copy-item-row:active { transform: scale(0.99); }
+  .copy-item-row.sel {
+    border-color: var(--accent);
+    background: rgba(198, 255, 0, 0.06);
+  }
+  .copy-item-check {
+    width: 22px; height: 22px;
+    border: 1.5px solid var(--border-strong);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--accent);
+    background: var(--bg);
+    transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  }
+  .copy-item-check svg { width: 14px; height: 14px; }
+  .copy-item-row.sel .copy-item-check {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+  }
+  .copy-item-main { flex: 1; min-width: 0; }
+  .copy-item-name {
+    font-size: 13.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .copy-item-sub {
+    font-size: 11.5px;
+    color: var(--text-2);
+    margin-top: 2px;
   }
 
   .subtle-list-empty {
@@ -1976,6 +2135,45 @@ if (typeof window !== 'undefined') {
     }
   });
 }
+/* ─── GRAMS MEMORY ────────────────────────────────────────
+   Memorizza l'ultima quantità in grammi inserita per ogni
+   alimento, indicizzata per nome+marca (case-insensitive).
+   Persistente tramite storage layer (sg/ss).
+   ──────────────────────────────────────────────────────── */
+function _gramsMemoryKey() {
+  if (!state.user || !state.user.userId) return null;
+  return `gramsMemory:${state.user.userId}`;
+}
+function _foodMemKey(food) {
+  if (!food) return '';
+  const name = String(food.name || '').trim().toLowerCase();
+  const brand = String(food.brand || '').trim().toLowerCase();
+  return name + '|' + brand;
+}
+async function getRememberedGrams(food, fallback = 100) {
+  const k = _gramsMemoryKey();
+  if (!k) return fallback;
+  try {
+    const map = (await sg(k)) || {};
+    const fk = _foodMemKey(food);
+    if (fk && map[fk]) return num(map[fk], fallback);
+  } catch (_) {}
+  return fallback;
+}
+async function rememberGrams(food, grams) {
+  const k = _gramsMemoryKey();
+  if (!k) return;
+  const fk = _foodMemKey(food);
+  if (!fk) return;
+  try {
+    const map = (await sg(k)) || {};
+    map[fk] = num(grams, 100);
+    await ss(k, map);
+  } catch (e) {
+    dlog('rememberGrams FAIL: ' + e.message);
+  }
+}
+
 async function addFoodToDiary(meal, food, grams) {
   const entry = {
     id: uid(),
@@ -1995,6 +2193,8 @@ async function addFoodToDiary(meal, food, grams) {
   state.diary[meal] = state.diary[meal] || [];
   state.diary[meal].push(entry);
   dlog(`ADD ${meal} on ${state.diaryDate}: ${entry.name} ${entry.grams}g`);
+  // Memorizza l'ultima quantità per questo alimento (ricordata al prossimo uso)
+  rememberGrams(food, entry.grams).catch(() => {});
   await saveDiary();
 }
 async function removeFromDiary(meal, entryId) {
@@ -2098,10 +2298,12 @@ async function saveCustomFood(food) {
   const id = food.id || 'custom-' + uid();
   const payload = { ...food, id, updatedAt: Date.now() };
   await ss(`customFoods:${state.user.userId}:${id}`, payload);
+  scheduleCloudAutoSync();
   return payload;
 }
 async function deleteCustomFood(id) {
   await sd(`customFoods:${state.user.userId}:${id}`);
+  scheduleCloudAutoSync();
 }
 
 /* ─── TEMPLATES ──────────────────────────────────────────── */
@@ -2120,10 +2322,12 @@ async function saveTemplate(tpl) {
   const id = tpl.id || 'tpl-' + uid();
   const payload = { ...tpl, id, updatedAt: Date.now() };
   await ss(`mealTemplates:${state.user.userId}:${id}`, payload);
+  scheduleCloudAutoSync();
   return payload;
 }
 async function deleteTemplate(id) {
   await sd(`mealTemplates:${state.user.userId}:${id}`);
+  scheduleCloudAutoSync();
 }
 async function applyTemplate(tpl, meal) {
   for (const item of tpl.items) {
@@ -2140,6 +2344,7 @@ async function saveGoalsSchema(schema) {
   const clean = normalizeGoalsSchema(schema);
   await ss(`goals:${state.user.userId}`, clean);
   state.goalsSchema = clean;
+  scheduleCloudAutoSync();
 }
 
 /* ─── LOCAL FOOD DATABASE (Italian) ─────────────────────── */
@@ -2616,6 +2821,104 @@ async function searchOFF(q) {
   }
 }
 
+/* ─── AI SEARCH FOOD SPECIFIC ─────────────────────────
+   Ricerca diretta di un singolo prodotto specifico (commerciale o
+   generico) con focus sui valori nutrizionali ufficiali.
+   Diversa da aiSearchFoods (che ritorna varianti/alternative):
+   qui ci concentriamo sull'esatto prodotto richiesto.
+   ──────────────────────────────────────────────────────── */
+async function aiSearchFoodSpecific(query) {
+  const cfg = getAiConfig();
+  if (!cfg || !cfg.apiKey) {
+    throw new Error('AI non configurata (Profilo → AI Vision)');
+  }
+
+  const prompt = `Sei un esperto nutrizionale con accesso ai valori nutrizionali ufficiali di prodotti commerciali e alimentari noti a livello globale.
+
+L'utente sta cercando informazioni nutrizionali per: "${query}"
+
+Rispondi SOLO con JSON valido (no markdown, no backtick, no commenti, no testo introduttivo).
+Formato esatto:
+{"items":[{"name":"string","brand":"string","kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0}]}
+
+Regole:
+- Tutti i valori nutrizionali sono per 100g di prodotto.
+- "sodium" è in MILLIGRAMMI (mg), non grammi.
+- Per prodotti commerciali (Kinder Bueno, Nutella, Pringles, Coca-Cola, M&M's, Snickers, ecc.) usa i valori UFFICIALI dichiarati dal produttore sull'etichetta.
+- "brand" deve contenere la marca esatta del prodotto (es. "Ferrero" per Kinder, "Mondelez" per Oreo).
+- Per prodotti specifici dai 1-3 risultati esatti (varianti se esistono, es. "Kinder Bueno classico", "Kinder Bueno White").
+- Per query generiche (es. "biscotti") dai 5-7 risultati con prodotti commerciali noti.
+- Nomi in italiano se possibile, mantenendo il nome originale del brand.
+- Se un valore nutrizionale non è disponibile o è zero, usa 0.
+- Se il prodotto non esiste, restituisci items vuoto: {"items":[]}.
+
+Prodotto richiesto: ${query}`;
+
+  const MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      response_mime_type: 'application/json',
+      temperature: 0.1,
+      max_output_tokens: 1024,
+    },
+  };
+
+  let lastErr = null;
+  for (const model of MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cfg.apiKey)}`;
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      lastErr = new Error('Rete: ' + (e.message || 'fetch failed'));
+      continue;
+    }
+    if (!res.ok) {
+      if (res.status === 404) { lastErr = new Error(`Modello ${model} non disponibile`); continue; }
+      let detail = '';
+      try { detail = (await res.text()).slice(0, 200); } catch (_) {}
+      throw new Error(`AI HTTP ${res.status} ${res.statusText} ${detail}`);
+    }
+
+    const data = await res.json();
+    const candidates = data.candidates || [];
+    if (!candidates.length) { lastErr = new Error('AI nessuna risposta'); continue; }
+    const parts = (candidates[0].content && candidates[0].content.parts) || [];
+    const raw = parts.map(p => p.text || '').join('').trim();
+    if (!raw) { lastErr = new Error('AI risposta vuota'); continue; }
+
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) { lastErr = new Error('AI non ha restituito JSON'); continue; }
+
+    let parsed;
+    try { parsed = JSON.parse(match[0]); }
+    catch (e) { lastErr = new Error('JSON malformato: ' + e.message); continue; }
+
+    const items = Array.isArray(parsed.items) ? parsed.items : [];
+    return items
+      .filter(it => it && typeof it.name === 'string' && it.name.trim())
+      .map(it => ({
+        id: 'ai-' + uid(),
+        name: String(it.name).trim(),
+        brand: String(it.brand || '').trim(),
+        kcal: num(it.kcal),
+        protein: num(it.protein),
+        carbs: num(it.carbs),
+        fat: num(it.fat),
+        fiber: num(it.fiber),
+        sugar: num(it.sugar),
+        sodium: num(it.sodium),
+        image_url: '',
+      }));
+  }
+  throw lastErr || new Error('AI non disponibile');
+}
+
 async function aiSearchFoods(q) {
   const cfg = getAiConfig();
   if (!cfg || !cfg.apiKey) {
@@ -2714,28 +3017,42 @@ async function boot() {
   if (session && session.userId) {
     state.user = session;
     if (session.authMode === 'github') {
-      const profile = await sg('users:gh:' + (session.githubLogin || '').toLowerCase());
-      if (profile) {
-        state.user.avatar_url = profile.avatar_url || '';
-      }
+      // Avatar: lookup non bloccante - se è in cache mostralo, altrimenti
+      // l'app si carica subito senza aspettare lo storage
+      sg('users:gh:' + (session.githubLogin || '').toLowerCase()).then(profile => {
+        if (profile && profile.avatar_url) {
+          state.user.avatar_url = profile.avatar_url;
+          // Re-render solo se sono nella tab profilo (dove si vede l'avatar)
+          if (state.tab === 'profile') render();
+        }
+      }).catch(() => {});
     }
-    await loadAll();
+    // Carica SOLO il diario di oggi (essenziale per la dashboard)
+    // Tutto il resto viene caricato in background dopo
+    await loadDiary(state.date);
+    await loadGoals();
     state.screen = 'app';
+    render(); // dashboard visibile in ~100ms invece di ~500ms
+    // Carica il resto in background, non bloccante
+    Promise.all([
+      loadCustomFoods(),
+      loadTemplates(),
+      refreshDbFoodsCache(),
+    ]).catch(e => dlog('Background load FAIL: ' + e.message));
   } else {
     state.screen = 'login';
+    render();
+    return;
   }
-  render();
   // Auto-pulizia silenziosa dei dati di diario >14 giorni in background
   if (state.user && state.user.userId) {
     setTimeout(() => {
       pruneOldDiaryEntries().catch(e => dlog('PRUNE auto FAIL: ' + e.message));
-    }, 2000);
-    // Auto-pull cloud subito dopo aver mostrato la dashboard:
-    // mostriamo prima i dati locali (UX immediata), poi se il cloud
-    // ha versione più recente la applichiamo e re-render.
+    }, 3000);
+    // Auto-pull cloud dopo 1 secondo per non interferire col boot
     setTimeout(() => {
       cloudPullAuto().catch(e => dlog('AUTO-PULL outer FAIL: ' + e.message));
-    }, 200);
+    }, 1000);
   }
 }
 
@@ -3052,7 +3369,9 @@ function renderAppShell() {
   if (state.tab === 'search')  { header = renderHeader('Cerca alimenti'); content = renderSearch(); }
   if (state.tab === 'photo')   { header = renderHeader('Foto AI'); content = renderPhotoTab(); }
   if (state.tab === 'profile') { header = renderHeader('Profilo'); content = renderProfile(); }
-  return `${header}<div class="screen" id="screen">${content}</div>${tabbar}`;
+  // Refresh FAB: in basso a destra, sopra la tab bar
+  const refreshFab = `<button class="fab-refresh" id="fab-refresh" aria-label="Sincronizza con cloud">${I.refresh}</button>`;
+  return `${header}<div class="screen" id="screen">${content}</div>${refreshFab}${tabbar}`;
 }
 function renderHeader(title) {
   return `<div class="header"><h1>${esc(title)}</h1></div>`;
@@ -3265,6 +3584,12 @@ function renderSearch() {
         ${I.search}
         <input type="search" class="search-input" id="q" placeholder="Es. yogurt greco, mela, pasta..." value="${esc(state.searchQuery)}">
       </div>
+      ${state.searchQuery && state.searchQuery.length >= 2 ? `
+        <button id="ai-search-btn" class="ai-search-btn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 2l1.4 4.3L18 8l-4.6 1.7L12 14l-1.4-4.3L6 8l4.6-1.7L12 2z"/><path d="M5 17l.7 2 2 .7-2 .7L5 23l-.7-2.6L1.7 19.7l2-.7L5 17z"/><path d="M19 14l.5 1.5L21 16l-1.5.5L19 18l-.5-1.5L17 16l1.5-.5L19 14z"/></svg>
+          Cerca con AI: <strong>${esc(state.searchQuery)}</strong>
+        </button>
+      ` : ''}
     </div>
     <div id="search-results">${content}</div>
   `;
@@ -3586,9 +3911,13 @@ function closeSheet() {
 }
 
 /* ─── ADD FOOD SHEET ───────────────────────────────────── */
-function openAddFood(food, defaultMeal = 'breakfast') {
-  state.addFood = { food, meal: defaultMeal, grams: 100 };
+async function openAddFood(food, defaultMeal = 'breakfast') {
+  // Recupera l'ultima quantità usata per questo alimento (default 100g)
+  const rememberedGrams = await getRememberedGrams(food, 100);
+  state.addFood = { food, meal: defaultMeal, grams: rememberedGrams };
   const f = food;
+  const initialGrams = rememberedGrams;
+  const factor = initialGrams / 100;
   const meals = [['breakfast','Colazione'],['lunch','Pranzo'],['dinner','Cena'],['snack','Spuntino']];
   const html = `
     <h2 class="sheet-title">${esc(f.name)}</h2>
@@ -3605,8 +3934,19 @@ function openAddFood(food, defaultMeal = 'breakfast') {
     </div>
 
     <div class="field">
-      <label>Quantità (grammi)</label>
-      <input class="input" type="number" id="grams" inputmode="numeric" min="1" max="5000" value="100" step="1">
+      <label style="display:flex;align-items:center;justify-content:space-between">
+        <span>Quantità (grammi)</span>
+        ${rememberedGrams !== 100 ? `<span style="font-size:10px;color:var(--accent);font-weight:500;text-transform:uppercase;letter-spacing:0.06em">Ultimo inserimento</span>` : ''}
+      </label>
+      <div class="portion-bar" id="portion-bar" data-base-grams="${initialGrams}">
+        <button type="button" class="portion-btn" data-portion-op="dec" aria-label="Diminuisci porzione">−</button>
+        <button type="button" class="portion-btn portion-num" data-portion="1">1×</button>
+        <button type="button" class="portion-btn portion-num" data-portion="2">2×</button>
+        <button type="button" class="portion-btn portion-num" data-portion="3">3×</button>
+        <button type="button" class="portion-btn" data-portion-op="inc" aria-label="Aumenta porzione">+</button>
+      </div>
+      <input class="input" type="number" id="grams" inputmode="numeric" min="1" max="5000" value="${initialGrams}" step="1" style="margin-top:8px">
+      <div style="font-size:10.5px;color:var(--text-3);margin-top:6px;letter-spacing:0.02em">Porzione base: ${initialGrams}g · tap × per moltiplicare</div>
     </div>
 
     <div class="field">
@@ -3616,8 +3956,24 @@ function openAddFood(food, defaultMeal = 'breakfast') {
       </div>
     </div>
 
-    <div id="add-preview" style="padding:10px 12px;background:var(--surface-2);border-radius:10px;margin-bottom:14px;font-size:13px;color:var(--text-2);text-align:center">
-      <span style="color:var(--accent);font-weight:600;font-size:16px">${round(f.kcal)}</span> kcal totali
+    <div id="add-preview" style="padding:14px 12px;background:var(--surface-2);border-radius:10px;margin-bottom:14px">
+      <div style="text-align:center;font-size:13px;color:var(--text-2);margin-bottom:10px">
+        <span style="color:var(--accent);font-weight:700;font-size:20px">${round(f.kcal * factor)}</span> kcal totali
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;padding-top:10px;border-top:1px solid var(--border)">
+        <div>
+          <div id="pv-prot" style="font-size:15px;font-weight:700;color:var(--protein);font-variant-numeric:tabular-nums">${round(f.protein * factor,1)}<span style="font-size:11px;font-weight:500;color:var(--text-3)">g</span></div>
+          <div style="font-size:9.5px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:2px">Proteine</div>
+        </div>
+        <div>
+          <div id="pv-carb" style="font-size:15px;font-weight:700;color:var(--carbs);font-variant-numeric:tabular-nums">${round(f.carbs * factor,1)}<span style="font-size:11px;font-weight:500;color:var(--text-3)">g</span></div>
+          <div style="font-size:9.5px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:2px">Carbo</div>
+        </div>
+        <div>
+          <div id="pv-fat" style="font-size:15px;font-weight:700;color:var(--fat);font-variant-numeric:tabular-nums">${round(f.fat * factor,1)}<span style="font-size:11px;font-weight:500;color:var(--text-3)">g</span></div>
+          <div style="font-size:9.5px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:2px">Grassi</div>
+        </div>
+      </div>
     </div>
 
     <button class="btn btn-primary" id="add-confirm">Aggiungi al pasto</button>
@@ -3630,11 +3986,65 @@ function bindAddFoodSheet() {
   const gramsEl = document.getElementById('grams');
   const pv = document.getElementById('add-preview');
   const mp = document.getElementById('meal-pick');
+  const portionBar = document.getElementById('portion-bar');
+  const baseGrams = num(portionBar?.dataset.baseGrams, 100) || 100;
+  const f = state.addFood.food;
   const update = () => {
     state.addFood.grams = num(gramsEl.value, 0);
-    pv.innerHTML = `<span style="color:var(--accent);font-weight:600;font-size:16px">${round(state.addFood.food.kcal * state.addFood.grams / 100)}</span> kcal totali`;
+    const g = state.addFood.grams;
+    const factor = g / 100;
+    // Trova gli elementi figli e aggiorna i valori — riusiamo gli ID per evitare ricostruzione
+    const kcalEl = pv.querySelector('span[style*="--accent"]');
+    if (kcalEl) kcalEl.textContent = round(f.kcal * factor);
+    const prot = document.getElementById('pv-prot');
+    const carb = document.getElementById('pv-carb');
+    const fat = document.getElementById('pv-fat');
+    if (prot) prot.innerHTML = `${round(f.protein * factor, 1)}<span style="font-size:11px;font-weight:500;color:var(--text-3)">g</span>`;
+    if (carb) carb.innerHTML = `${round(f.carbs * factor, 1)}<span style="font-size:11px;font-weight:500;color:var(--text-3)">g</span>`;
+    if (fat)  fat.innerHTML  = `${round(f.fat * factor, 1)}<span style="font-size:11px;font-weight:500;color:var(--text-3)">g</span>`;
+    // Sincronizza i pulsanti porzione: evidenzia quello attivo se i grammi
+    // corrispondono esattamente a un multiplo intero della base
+    if (portionBar && baseGrams > 0) {
+      const ratio = g / baseGrams;
+      const isInt = Math.abs(ratio - Math.round(ratio)) < 0.001;
+      portionBar.querySelectorAll('[data-portion]').forEach(b => {
+        const p = parseInt(b.dataset.portion, 10);
+        b.classList.toggle('sel', isInt && p === Math.round(ratio));
+      });
+    }
   };
   gramsEl.oninput = update;
+  update(); // primo render con valore di default 100g
+
+  // Pulsanti porzione (1×, 2×, 3×) e +/-
+  if (portionBar) {
+    portionBar.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const op = btn.dataset.portionOp;
+      const portion = btn.dataset.portion;
+      const cur = num(gramsEl.value, baseGrams);
+      let next = cur;
+      if (op === 'inc') {
+        // Calcola la porzione corrente (arrotondata) e aggiungi 1
+        const ratio = cur / baseGrams;
+        const nextRatio = Math.floor(ratio + 0.001) + 1;
+        next = Math.round(baseGrams * nextRatio);
+      } else if (op === 'dec') {
+        const ratio = cur / baseGrams;
+        // Vai alla porzione intera precedente, ma non scendere sotto 1×
+        const nextRatio = Math.max(1, Math.ceil(ratio - 0.001) - 1);
+        next = Math.round(baseGrams * nextRatio);
+      } else if (portion) {
+        next = Math.round(baseGrams * parseInt(portion, 10));
+      }
+      if (next > 0 && next <= 5000) {
+        gramsEl.value = next;
+        update();
+      }
+    });
+  }
+
   mp.addEventListener('click', (e) => {
     const b = e.target.closest('[data-meal-pick]');
     if (!b) return;
@@ -4125,11 +4535,23 @@ function openCustomFoodsSheet(filter = '') {
     listEl.querySelectorAll('[data-del-custom]').forEach(b => {
       b.onclick = async () => {
         if (!confirm('Eliminare questo alimento?')) return;
+        // Salva scroll position prima della modifica
+        const scrollTop = listEl.scrollTop;
         await deleteCustomFood(b.dataset.delCustom);
         await loadCustomFoods();
-        // Riapri il sheet con il filtro corrente per ricaricare i dati
+        // Aggiorno SOLO la lista (preserva scroll e search input)
         const cur = document.getElementById('cf-search');
-        openCustomFoodsSheet(cur ? cur.value : '');
+        const updated = renderListHtml(cur ? cur.value : '');
+        const subEl = document.getElementById('cf-sub');
+        if (subEl) subEl.textContent = updated.sub;
+        // Aggiorna anche la lista dei dati interni perché è cambiata
+        all.length = 0;
+        Array.prototype.push.apply(all, state.customFoods);
+        const newData = renderListHtml(cur ? cur.value : '');
+        listEl.innerHTML = newData.html;
+        if (subEl) subEl.textContent = newData.sub;
+        listEl.scrollTop = scrollTop;
+        bindRowActions();
       };
     });
   };
@@ -4238,12 +4660,16 @@ async function openDbFoodsSheet(filter = '', showHidden = false) {
         const ref = b.dataset.restoreDb;
         if (!ref.startsWith('idx-')) return;
         const idx = parseInt(ref.slice(4), 10);
+        const scrollTop = listEl.scrollTop;
         await sd(`dbHidden:${state.user.userId}:${idx}`);
         await refreshDbFoodsCache();
-        if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
+        scheduleCloudAutoSync();
         toast('Ripristinato');
         const cur = document.getElementById('db-search');
-        openDbFoodsSheet(cur ? cur.value : '', showHidden);
+        await openDbFoodsSheet(cur ? cur.value : '', showHidden);
+        // Ripristina scroll
+        const newList = document.getElementById('db-list');
+        if (newList) newList.scrollTop = scrollTop;
       };
     });
   };
@@ -4355,7 +4781,7 @@ function openDbFoodEditor(food) {
       await ss(`dbAdditions:${userId}:${id}`, data);
     }
     await refreshDbFoodsCache();
-    if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
+    scheduleCloudAutoSync();
     toast('Salvato');
     openDbFoodsSheet();
   };
@@ -4364,7 +4790,7 @@ function openDbFoodEditor(food) {
     if (!confirm('Ripristinare i valori CREA-INRAN ufficiali per "' + f.name + '"?')) return;
     await sd(`dbOverrides:${state.user.userId}:${food._index}`);
     await refreshDbFoodsCache();
-    if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
+    scheduleCloudAutoSync();
     toast('Ripristinato');
     openDbFoodsSheet();
   };
@@ -4373,7 +4799,7 @@ function openDbFoodEditor(food) {
     if (!confirm('Eliminare "' + f.name + '" dal database?')) return;
     await sd(`dbAdditions:${state.user.userId}:${food._addId}`);
     await refreshDbFoodsCache();
-    if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
+    scheduleCloudAutoSync();
     toast('Eliminato');
     openDbFoodsSheet();
   };
@@ -4384,7 +4810,7 @@ function openDbFoodEditor(food) {
     await ss(`dbHidden:${state.user.userId}:${food._index}`, { hiddenAt: Date.now() });
     await sd(`dbOverrides:${state.user.userId}:${food._index}`);
     await refreshDbFoodsCache();
-    if (cloudBackup && cloudBackup.scheduleSync) cloudBackup.scheduleSync();
+    scheduleCloudAutoSync();
     toast('Rimosso dal database');
     openDbFoodsSheet();
   };
@@ -4775,10 +5201,19 @@ function openTemplatesSheet(selectMealTarget = null, filter = '') {
     listEl.querySelectorAll('[data-del-tpl]').forEach(b => {
       b.onclick = async () => {
         if (!confirm('Eliminare questo pasto?')) return;
+        const scrollTop = listEl.scrollTop;
         await deleteTemplate(b.dataset.delTpl);
         await loadTemplates();
+        // Aggiorna lista interna
+        all.length = 0;
+        Array.prototype.push.apply(all, state.templates);
         const cur = document.getElementById('tpl-search');
-        openTemplatesSheet(selectMealTarget, cur ? cur.value : '');
+        const updated = renderListData(cur ? cur.value : '');
+        const subEl = document.getElementById('tpl-sub');
+        if (subEl) subEl.textContent = updated.sub;
+        listEl.innerHTML = updated.html;
+        listEl.scrollTop = scrollTop;
+        bindRowActions();
       };
     });
     if (selectMealTarget) {
@@ -4949,7 +5384,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.18.2';
+const APP_VERSION = '1.23.1';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -6397,16 +6832,117 @@ async function openCopyMealSheet(meal) {
   `);
 
   document.querySelectorAll('[data-copy-src]').forEach(row => {
-    row.onclick = async () => {
+    row.onclick = () => {
       const fromDate = row.dataset.copySrc;
       const replaceEl = document.getElementById('replace-mode');
       const mode = (replaceEl && replaceEl.checked) ? 'replace' : 'append';
-      const n = await copyMealFromDate(fromDate, meal, mode);
-      closeSheet();
-      toast(`${n} aliment${n === 1 ? 'o copiato' : 'i copiati'}`);
-      render();
+      const dayData = days.find(d => d.date === fromDate);
+      if (!dayData) return;
+      // Apri secondo step: selezione alimenti
+      openCopyMealItemsSheet(meal, fromDate, dayData.items, mode);
     };
   });
+}
+
+/* ─── COPY MEAL: step 2 - selezione alimenti ─────────── */
+function openCopyMealItemsSheet(meal, fromDate, items, mode) {
+  const mealLabels = { breakfast: 'Colazione', lunch: 'Pranzo', dinner: 'Cena', snack: 'Spuntino' };
+  const pdFrom = prettyDate(fromDate);
+  // Stato selezione: tutti selezionati di default
+  const selected = new Set(items.map((_, i) => i));
+
+  const renderRows = () => items.map((it, i) => {
+    const isSel = selected.has(i);
+    const kcal = (it.kcal || 0) * (it.grams || 0) / 100;
+    return `
+      <div class="copy-item-row ${isSel ? 'sel' : ''}" data-item-idx="${i}">
+        <div class="copy-item-check">${isSel ? I.check : ''}</div>
+        <div class="copy-item-main">
+          <div class="copy-item-name">${esc(it.name)}</div>
+          <div class="copy-item-sub">${round(it.grams)} g · ${round(kcal)} kcal</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const updateConfirmCount = () => {
+    const btn = document.getElementById('copy-confirm-btn');
+    if (btn) {
+      const n = selected.size;
+      btn.textContent = n === 0 ? 'Nessun alimento selezionato' : `Copia ${n} aliment${n === 1 ? 'o' : 'i'}`;
+      btn.disabled = n === 0;
+      btn.style.opacity = n === 0 ? '0.5' : '';
+    }
+  };
+
+  openSheet(`
+    <h2 class="sheet-title">Da ${esc(pdFrom.main)} ${esc(pdFrom.sub)}</h2>
+    <p class="sheet-sub">${items.length} aliment${items.length === 1 ? 'o' : 'i'} in ${mealLabels[meal].toLowerCase()}. Seleziona quelli da copiare.</p>
+
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-secondary" id="copy-all" style="flex:1;padding:8px;font-size:12px">Seleziona tutti</button>
+      <button class="btn btn-secondary" id="copy-none" style="flex:1;padding:8px;font-size:12px">Deseleziona tutti</button>
+    </div>
+
+    <div class="copy-items-list" id="copy-items-list">${renderRows()}</div>
+
+    <button class="btn btn-primary" id="copy-confirm-btn" style="margin-top:14px"></button>
+    <button class="btn btn-ghost" id="copy-back" style="margin-top:6px">Indietro</button>
+  `);
+
+  const listEl = document.getElementById('copy-items-list');
+  const bindRows = () => {
+    listEl.querySelectorAll('[data-item-idx]').forEach(row => {
+      row.onclick = () => {
+        const i = parseInt(row.dataset.itemIdx, 10);
+        if (selected.has(i)) selected.delete(i);
+        else selected.add(i);
+        listEl.innerHTML = renderRows();
+        bindRows();
+        updateConfirmCount();
+      };
+    });
+  };
+  bindRows();
+  updateConfirmCount();
+
+  document.getElementById('copy-all').onclick = () => {
+    items.forEach((_, i) => selected.add(i));
+    listEl.innerHTML = renderRows();
+    bindRows();
+    updateConfirmCount();
+  };
+  document.getElementById('copy-none').onclick = () => {
+    selected.clear();
+    listEl.innerHTML = renderRows();
+    bindRows();
+    updateConfirmCount();
+  };
+  document.getElementById('copy-back').onclick = () => openCopyMealSheet(meal);
+  document.getElementById('copy-confirm-btn').onclick = async () => {
+    if (selected.size === 0) return;
+    const pickedItems = items.filter((_, i) => selected.has(i));
+    const n = await copyMealItemsFromDate(meal, pickedItems, mode);
+    closeSheet();
+    toast(`${n} aliment${n === 1 ? 'o copiato' : 'i copiati'}`);
+    render();
+  };
+}
+
+async function copyMealItemsFromDate(meal, items, mode) {
+  // Carica diary del giorno corrente
+  await loadDiary(state.date);
+  if (mode === 'replace') {
+    state.diary[meal] = [];
+  }
+  // Aggiungi gli items selezionati con nuovi ID per evitare collisioni
+  for (const it of items) {
+    state.diary[meal].push({
+      ...it,
+      id: uid(),
+    });
+  }
+  await saveDiary();
+  return items.length;
 }
 /* ─── CUSTOM PICKER (for add-custom-to-meal) ─────────── */
 function openCustomPicker(meal) {
@@ -6563,6 +7099,40 @@ function bindApp() {
   const fab = document.getElementById('fab-add');
   if (fab) fab.onclick = openFabMenu;
 
+  // FAB refresh — sincronizza manualmente con il cloud
+  const fabRefresh = document.getElementById('fab-refresh');
+  if (fabRefresh) {
+    fabRefresh.onclick = async () => {
+      if (fabRefresh.classList.contains('spinning')) return; // già in corso
+      fabRefresh.classList.add('spinning');
+      fabRefresh.classList.remove('success');
+      try {
+        // 1. Push immediato dei dati locali (bypassa il debounce di 5s)
+        if (cloudBackup && cloudBackup.isConfigured && cloudBackup.isConfigured()) {
+          const payload = await exportUserData();
+          await cloudBackup.push(APP_ID, payload);
+        }
+        // 2. Pull cloud per scaricare modifiche da altri device
+        _cloudAutoPullDone = false;
+        await cloudPullAuto();
+        // 3. Re-render
+        await loadAll();
+        render();
+        fabRefresh.classList.remove('spinning');
+        fabRefresh.classList.add('success');
+        toast('Sincronizzato');
+        setTimeout(() => {
+          const el = document.getElementById('fab-refresh');
+          if (el) el.classList.remove('success');
+        }, 1500);
+      } catch (e) {
+        fabRefresh.classList.remove('spinning');
+        toast('Errore sincronizzazione: ' + (e.message || 'rete'));
+        dlog('FAB refresh FAIL: ' + e.message);
+      }
+    };
+  }
+
   // add from meal
   document.querySelectorAll('[data-add-search]').forEach(b => {
     b.onclick = () => {
@@ -6590,6 +7160,38 @@ function bindApp() {
   const targetSelect = document.getElementById('target-meal-select');
   if (targetSelect) {
     targetSelect.onchange = (e) => { state.targetMeal = e.target.value; };
+  }
+  // AI Search button: ricerca diretta tramite Gemini
+  const aiBtn = document.getElementById('ai-search-btn');
+  if (aiBtn) {
+    aiBtn.onclick = async () => {
+      const query = state.searchQuery;
+      if (!query || query.length < 2) return;
+      aiBtn.classList.add('loading');
+      aiBtn.querySelector('strong').textContent = 'Sto cercando...';
+      try {
+        const aiResults = await aiSearchFoodSpecific(query);
+        if (!aiResults || aiResults.length === 0) {
+          toast('AI non ha trovato risultati per "' + query + '"');
+          aiBtn.classList.remove('loading');
+          aiBtn.querySelector('strong').textContent = query;
+          return;
+        }
+        // Marca i risultati come AI e mette in cima alla lista
+        const tagged = aiResults.map(r => ({ ...r, _ai: true }));
+        // Deduplica con risultati esistenti per nome+marca
+        const seen = new Set(state.searchResults.map(f => stripAccents((f.name + '|' + (f.brand || '')).toLowerCase())));
+        const fresh = tagged.filter(f => !seen.has(stripAccents((f.name + '|' + (f.brand || '')).toLowerCase())));
+        state.searchResults = [...fresh, ...state.searchResults];
+        state.searchState = state.searchResults.length ? 'results' : 'empty';
+        updateSearchResults();
+        toast(`AI: ${fresh.length} nuov${fresh.length === 1 ? 'o risultato' : 'i risultati'}`);
+      } catch (e) {
+        toast('Errore AI: ' + (e.message || 'rete'));
+        aiBtn.classList.remove('loading');
+        aiBtn.querySelector('strong').textContent = query;
+      }
+    };
   }
   bindSearchResults();
 
