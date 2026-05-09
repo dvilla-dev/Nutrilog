@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.23.1 -->
+<!-- NUTRILOG_VERSION: 1.23.3 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -1073,38 +1073,6 @@
     .fab { right: calc(50% - 240px); }
   }
 
-  /* FAB Refresh: secondario, sopra il FAB principale */
-  .fab-refresh {
-    position: fixed;
-    right: max(20px, env(safe-area-inset-right));
-    bottom: calc(148px + var(--safe-bot));
-    width: 44px; height: 44px;
-    border-radius: 50%;
-    background: var(--surface-2);
-    color: var(--text-2);
-    border: 1px solid var(--border-strong);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 49;
-    transition: transform var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
-  }
-  .fab-refresh svg { width: 20px; height: 20px; }
-  .fab-refresh:active { transform: scale(0.92); }
-  .fab-refresh.spinning svg {
-    animation: spin 1s linear infinite;
-  }
-  .fab-refresh.success {
-    background: var(--accent);
-    color: var(--accent-text);
-    border-color: var(--accent);
-  }
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-  @media (min-width: 521px) {
-    .fab-refresh { right: calc(50% - 240px); }
-  }
 
   .fab-menu {
     position: fixed;
@@ -2093,6 +2061,25 @@ function saveDiary() {
 
 /* ─── CLOUD AUTO-SYNC (debounced) ──────────────────────── */
 let _cloudSyncTimer = null;
+let _lastPushedSignature = null; // ricorda quanti dati abbiamo pushato ultimamente
+function payloadSignature(p) {
+  // Crea una "firma" leggera del payload per rilevare se è stato accidentalmente svuotato
+  if (!p) return { customFoods: 0, templates: 0, diaryDays: 0, diaryItems: 0 };
+  let diaryItems = 0;
+  if (p.diary) {
+    for (const day of Object.values(p.diary)) {
+      for (const m of ['breakfast','lunch','dinner','snack']) {
+        diaryItems += (day[m] || []).length;
+      }
+    }
+  }
+  return {
+    customFoods: (p.customFoods || []).length,
+    templates: (p.mealTemplates || []).length,
+    diaryDays: Object.keys(p.diary || {}).length,
+    diaryItems,
+  };
+}
 function scheduleCloudAutoSync() {
   const cfg = cloudBackup.getConfig && cloudBackup.getConfig();
   if (!cfg || !cfg.autoSync) return;
@@ -2101,7 +2088,7 @@ function scheduleCloudAutoSync() {
     // Skip se siamo nel mezzo di un pull (evita di sovrascrivere il cloud
     // appena scaricato con i dati locali)
     if (state._suspendAutoSync) {
-      dlog('auto-sync cloud: skip (pull in corso)');
+      dlog('auto-sync cloud: skip (pull/boot in corso)');
       return;
     }
     // Skip se offline
@@ -2111,12 +2098,27 @@ function scheduleCloudAutoSync() {
     }
     try {
       const payload = await exportUserData();
+      const sig = payloadSignature(payload);
+      // SAFETY CHECK: se il payload corrente ha MOLTI MENO dati dell'ultimo
+      // push (perdita superiore al 50% dei custom foods o template), blocca.
+      // Indica una probabile race condition o bug che svuoterebbe il cloud.
+      if (_lastPushedSignature) {
+        const prev = _lastPushedSignature;
+        const lostCustomFoods = prev.customFoods > 5 && sig.customFoods < prev.customFoods * 0.5;
+        const lostTemplates = prev.templates > 2 && sig.templates < prev.templates * 0.5;
+        if (lostCustomFoods || lostTemplates) {
+          dlog(`auto-sync cloud: BLOCKED - sospetta perdita dati (prev=${JSON.stringify(prev)}, now=${JSON.stringify(sig)})`);
+          toast('Sync bloccato: rilevata perdita dati locali');
+          return;
+        }
+      }
       await cloudBackup.push(APP_ID, payload);
-      dlog('auto-sync cloud: ok');
+      _lastPushedSignature = sig;
+      dlog(`auto-sync cloud: ok (${sig.customFoods} foods, ${sig.templates} tpls, ${sig.diaryItems} entries)`);
     } catch (e) {
       dlog('auto-sync cloud FAILED: ' + e.message);
     }
-  }, 5000); // 5 secondi di inattività prima del push (era 15s)
+  }, 5000);
 }
 
 // Riprova sync quando torna la connessione
@@ -3016,40 +3018,42 @@ async function boot() {
   const session = await sg('session');
   if (session && session.userId) {
     state.user = session;
+    // Sospendi auto-sync finché non abbiamo caricato TUTTI i dati locali.
+    // Senza questo, un saveDiary che parte mentre customFoods è ancora []
+    // causerebbe un push al cloud con dati incompleti.
+    state._suspendAutoSync = true;
     if (session.authMode === 'github') {
       // Avatar: lookup non bloccante - se è in cache mostralo, altrimenti
       // l'app si carica subito senza aspettare lo storage
       sg('users:gh:' + (session.githubLogin || '').toLowerCase()).then(profile => {
         if (profile && profile.avatar_url) {
           state.user.avatar_url = profile.avatar_url;
-          // Re-render solo se sono nella tab profilo (dove si vede l'avatar)
           if (state.tab === 'profile') render();
         }
       }).catch(() => {});
     }
-    // Carica SOLO il diario di oggi (essenziale per la dashboard)
-    // Tutto il resto viene caricato in background dopo
-    await loadDiary(state.date);
-    await loadGoals();
-    state.screen = 'app';
-    render(); // dashboard visibile in ~100ms invece di ~500ms
-    // Carica il resto in background, non bloccante
-    Promise.all([
+    // Carica TUTTI i dati locali PRIMA di mostrare la dashboard e abilitare il sync.
+    // Questo previene race condition dove un push partirebbe con dati incompleti.
+    await Promise.all([
+      loadDiary(state.date),
+      loadGoals(),
       loadCustomFoods(),
       loadTemplates(),
       refreshDbFoodsCache(),
-    ]).catch(e => dlog('Background load FAIL: ' + e.message));
+    ]);
+    state.screen = 'app';
+    render();
+    // Ora è sicuro riabilitare il sync
+    state._suspendAutoSync = false;
   } else {
     state.screen = 'login';
     render();
     return;
   }
-  // Auto-pulizia silenziosa dei dati di diario >14 giorni in background
   if (state.user && state.user.userId) {
     setTimeout(() => {
       pruneOldDiaryEntries().catch(e => dlog('PRUNE auto FAIL: ' + e.message));
     }, 3000);
-    // Auto-pull cloud dopo 1 secondo per non interferire col boot
     setTimeout(() => {
       cloudPullAuto().catch(e => dlog('AUTO-PULL outer FAIL: ' + e.message));
     }, 1000);
@@ -3369,9 +3373,7 @@ function renderAppShell() {
   if (state.tab === 'search')  { header = renderHeader('Cerca alimenti'); content = renderSearch(); }
   if (state.tab === 'photo')   { header = renderHeader('Foto AI'); content = renderPhotoTab(); }
   if (state.tab === 'profile') { header = renderHeader('Profilo'); content = renderProfile(); }
-  // Refresh FAB: in basso a destra, sopra la tab bar
-  const refreshFab = `<button class="fab-refresh" id="fab-refresh" aria-label="Sincronizza con cloud">${I.refresh}</button>`;
-  return `${header}<div class="screen" id="screen">${content}</div>${refreshFab}${tabbar}`;
+  return `${header}<div class="screen" id="screen">${content}</div>${tabbar}`;
 }
 function renderHeader(title) {
   return `<div class="header"><h1>${esc(title)}</h1></div>`;
@@ -5384,7 +5386,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.23.1';
+const APP_VERSION = '1.23.3';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -7098,40 +7100,6 @@ function bindApp() {
   // FAB quick add
   const fab = document.getElementById('fab-add');
   if (fab) fab.onclick = openFabMenu;
-
-  // FAB refresh — sincronizza manualmente con il cloud
-  const fabRefresh = document.getElementById('fab-refresh');
-  if (fabRefresh) {
-    fabRefresh.onclick = async () => {
-      if (fabRefresh.classList.contains('spinning')) return; // già in corso
-      fabRefresh.classList.add('spinning');
-      fabRefresh.classList.remove('success');
-      try {
-        // 1. Push immediato dei dati locali (bypassa il debounce di 5s)
-        if (cloudBackup && cloudBackup.isConfigured && cloudBackup.isConfigured()) {
-          const payload = await exportUserData();
-          await cloudBackup.push(APP_ID, payload);
-        }
-        // 2. Pull cloud per scaricare modifiche da altri device
-        _cloudAutoPullDone = false;
-        await cloudPullAuto();
-        // 3. Re-render
-        await loadAll();
-        render();
-        fabRefresh.classList.remove('spinning');
-        fabRefresh.classList.add('success');
-        toast('Sincronizzato');
-        setTimeout(() => {
-          const el = document.getElementById('fab-refresh');
-          if (el) el.classList.remove('success');
-        }, 1500);
-      } catch (e) {
-        fabRefresh.classList.remove('spinning');
-        toast('Errore sincronizzazione: ' + (e.message || 'rete'));
-        dlog('FAB refresh FAIL: ' + e.message);
-      }
-    };
-  }
 
   // add from meal
   document.querySelectorAll('[data-add-search]').forEach(b => {
