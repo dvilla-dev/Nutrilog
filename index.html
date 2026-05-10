@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.27.3 -->
+<!-- NUTRILOG_VERSION: 1.27.5 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -3575,9 +3575,23 @@ function render() {
   }
   if (state.screen === 'login')    { app.innerHTML = renderLogin(); bindAuth(); return; }
   if (state.screen === 'register') { app.innerHTML = renderRegister(); bindAuth(); return; }
+  // Salva scroll position dello screen attuale (per la stessa tab) per poterlo
+  // ripristinare dopo il re-render. Questo evita che ogni render riporti l'utente
+  // in cima alla pagina dopo un'azione (es. aggiunta di un alimento).
+  const prevScreen = document.getElementById('screen');
+  const savedScroll = prevScreen && state.tab === _lastRenderedTab ? prevScreen.scrollTop : 0;
   app.innerHTML = renderAppShell();
   bindApp();
+  _lastRenderedTab = state.tab;
+  if (savedScroll > 0) {
+    const newScreen = document.getElementById('screen');
+    if (newScreen) {
+      // Forza il browser ad applicare il scrollTop senza animazione
+      newScreen.scrollTop = savedScroll;
+    }
+  }
 }
+let _lastRenderedTab = null;
 
 /* ─── AUTH SCREENS ──────────────────────────────────────── */
 function renderLogin() {
@@ -5829,7 +5843,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.27.3';
+const APP_VERSION = '1.27.5';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -7706,19 +7720,23 @@ function bindApp() {
       // Salva backup degli items cancellati per l'undo
       const allItems = state.diary[meal] || [];
       const deletedItems = allItems.filter(it => state.selectionMode.selected.has(it.id));
-      const deletedDate = state.date; // memorizza quale data per undo coerente
-      // Cancella tutti gli items selezionati direttamente sullo state, poi salva una sola volta
-      state.diary[meal] = allItems.filter(it => !state.selectionMode.selected.has(it.id));
+      const deletedDate = state.date;
+      const remaining = allItems.filter(it => !state.selectionMode.selected.has(it.id));
+      state.diary[meal] = remaining;
       await saveDiary();
-      state.selectionMode = null;
+      // Resta in modalità selezione (svuota solo i selezionati)
+      // Se non ci sono più alimenti nel pasto, esci automaticamente
+      if (remaining.length === 0) {
+        state.selectionMode = null;
+      } else {
+        state.selectionMode.selected.clear();
+      }
       render();
       // Toast con undo per 5 secondi
       toastWithUndo(
         `${ids.length} aliment${ids.length === 1 ? 'o eliminato' : 'i eliminati'}`,
         async () => {
-          // Solo se siamo ancora sullo stesso giorno (altrimenti potrebbe creare confusione)
           if (state.date !== deletedDate) {
-            // Carica il diario di quel giorno, ripristina lì, salva, ricarica oggi
             const dayKey = `diary:${state.user.userId}:${deletedDate}`;
             const day = (await sg(dayKey)) || { breakfast: [], lunch: [], dinner: [], snack: [] };
             day[meal] = [...(day[meal] || []), ...deletedItems];
