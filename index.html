@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.23.3 -->
+<!-- NUTRILOG_VERSION: 1.27.3 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -498,6 +498,71 @@
   .meal-copy-btn:hover { color: var(--accent); background: var(--surface-2); }
   .meal-copy-btn:active { transform: scale(0.92); }
   .meal-copy-btn svg { width: 15px; height: 15px; }
+
+  /* Selection mode buttons */
+  .meal-sel-btn {
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-3);
+    border-radius: 8px;
+    transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+  }
+  .meal-sel-btn:hover { color: var(--accent); background: var(--surface-2); }
+  .meal-sel-btn:active { transform: scale(0.92); }
+  .meal-sel-btn svg { width: 15px; height: 15px; }
+  .meal-sel-cancel {
+    padding: 6px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 500;
+    transition: all var(--dur) var(--ease);
+  }
+  .meal-sel-cancel:active { transform: scale(0.96); }
+  .meal-sel-delete {
+    padding: 6px 12px;
+    background: var(--danger);
+    border: 1px solid var(--danger);
+    border-radius: 8px;
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all var(--dur) var(--ease);
+  }
+  .meal-sel-delete:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .meal-sel-delete:not(:disabled):active { transform: scale(0.96); }
+  .meal-sel-delete svg { width: 14px; height: 14px; }
+  .food-item.sel-mode { padding-left: 8px; }
+  .food-item.sel-mode .food-checkbox {
+    width: 22px; height: 22px;
+    border: 1.5px solid var(--border-strong);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--accent);
+    background: var(--bg);
+    transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  }
+  .food-item.sel-mode .food-checkbox svg { width: 14px; height: 14px; }
+  .food-item.sel {
+    background: rgba(198, 255, 0, 0.06);
+  }
+  .food-item.sel .food-checkbox {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+  }
+
   .meal-list { padding: 0 6px 6px; }
   .food-item {
     display: flex;
@@ -1045,6 +1110,31 @@
     border: 1px solid var(--border-strong);
     animation: toastIn 260ms var(--ease);
   }
+  .toast.toast-out {
+    animation: toastOut 200ms var(--ease) forwards;
+  }
+  @keyframes toastOut {
+    from { opacity: 1; transform: translate(-50%, 0); }
+    to { opacity: 0; transform: translate(-50%, 8px); }
+  }
+  .toast.toast-undo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 8px 8px 18px;
+  }
+  .toast-undo-btn {
+    background: var(--accent);
+    color: var(--accent-text);
+    border: none;
+    padding: 6px 14px;
+    border-radius: var(--r-pill);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+  }
+  .toast-undo-btn:active { transform: scale(0.95); }
   @keyframes toastIn {
     from { opacity: 0; transform: translate(-50%, 8px); }
     to { opacity: 1; transform: translate(-50%, 0); }
@@ -1348,10 +1438,13 @@ const state = {
   searchState: 'idle',
   searchQuery: '',
   searchError: '',
+  mostUsedFoods: [], // Top alimenti più usati (calcolato all'avvio della tab Cerca)
+  aiSearchPending: null, // query attualmente in ricerca AI, null se nessuna
   targetMeal: 'breakfast',  // pasto di destinazione predefinito
   addFood: null,        // { food, meal } when choosing grams
   editFood: null,       // custom food being edited
   editTemplate: null,   // template being edited
+  selectionMode: null,  // null o { meal: 'breakfast', selected: Set<itemId> } per selezione multipla
 };
 
 /* ─── UTILS ──────────────────────────────────────────────── */
@@ -1439,14 +1532,54 @@ function debounce(fn, ms) {
     t = setTimeout(() => fn.apply(this, args), ms);
   };
 }
+// Timer attivo del toast corrente, così se ne arrivano in sequenza
+// non si "sopravvivono" l'uno con l'altro lasciando vecchi setTimeout in giro.
+let _toastTimer = null;
 function toast(msg) {
+  if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2400);
+  _toastTimer = setTimeout(() => {
+    // Fade out animato, poi remove
+    t.classList.add('toast-out');
+    setTimeout(() => { if (t.parentNode) t.remove(); }, 220);
+    _toastTimer = null;
+  }, 2400);
+}
+
+/* Toast con bottone "Annulla" — usato per cancellazioni multiple. */
+function toastWithUndo(msg, onUndo, durationMs = 5000) {
+  if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  const t = document.createElement('div');
+  t.className = 'toast toast-undo';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  const btn = document.createElement('button');
+  btn.className = 'toast-undo-btn';
+  btn.textContent = 'ANNULLA';
+  let done = false;
+  btn.onclick = async () => {
+    if (done) return;
+    done = true;
+    t.remove();
+    try { await onUndo(); }
+    catch (e) { dlog('Undo FAIL: ' + (e && e.message)); }
+  };
+  t.appendChild(span);
+  t.appendChild(btn);
+  document.body.appendChild(t);
+  _toastTimer = setTimeout(() => {
+    if (done) return;
+    t.classList.add('toast-out');
+    setTimeout(() => { if (t.parentNode) t.remove(); }, 220);
+    _toastTimer = null;
+  }, durationMs);
 }
 
 /* ─── STORAGE HELPERS ────────────────────────────────────── */
@@ -1649,6 +1782,84 @@ async function pruneOldDiaryEntries() {
   return { deleted };
 }
 
+/* ─── PRUNE BASE64 IMAGES ─────────────────────────────
+   Rimuove gli image_url che contengono dati base64 (foto AI vecchie),
+   che possono occupare 500KB-1MB ognuno e gonfiare lo storage.
+   ──────────────────────────────────────────────────── */
+async function pruneBase64Images() {
+  if (!state.user || !state.user.userId) return { cleaned: 0 };
+  const userId = state.user.userId;
+  let cleaned = 0;
+  let bytesFreed = 0;
+  const isBig = (url) => url && typeof url === 'string' && (url.startsWith('data:') || url.length > 1000);
+
+  // Pulisci diary entries
+  const diaryKeys = await sl(`diary:${userId}:`);
+  for (const k of diaryKeys) {
+    const day = await sg(k);
+    if (!day) continue;
+    let modified = false;
+    for (const meal of ['breakfast','lunch','dinner','snack']) {
+      const items = day[meal] || [];
+      for (const item of items) {
+        if (isBig(item.image_url)) {
+          bytesFreed += item.image_url.length;
+          item.image_url = '';
+          cleaned++;
+          modified = true;
+        }
+      }
+    }
+    if (modified) await ss(k, day);
+  }
+
+  // Pulisci customFoods
+  const cfKeys = await sl(`customFoods:${userId}:`);
+  for (const k of cfKeys) {
+    const f = await sg(k);
+    if (!f) continue;
+    if (isBig(f.image_url)) {
+      bytesFreed += f.image_url.length;
+      f.image_url = '';
+      cleaned++;
+      await ss(k, f);
+    }
+  }
+
+  // Pulisci mealTemplates
+  const tplKeys = await sl(`mealTemplates:${userId}:`);
+  for (const k of tplKeys) {
+    const t = await sg(k);
+    if (!t) continue;
+    let modified = false;
+    for (const item of (t.items || [])) {
+      const food = item.food || {};
+      if (isBig(food.image_url)) {
+        bytesFreed += food.image_url.length;
+        food.image_url = '';
+        cleaned++;
+        modified = true;
+      }
+    }
+    if (modified) await ss(k, t);
+  }
+
+  if (cleaned > 0) {
+    dlog(`PRUNE BASE64: ${cleaned} immagini rimosse (~${(bytesFreed/1024).toFixed(0)} KB liberati)`);
+    // Push al cloud per propagare la pulizia
+    if (cloudBackup && cloudBackup.isConfigured && cloudBackup.isConfigured()) {
+      try {
+        const fresh = await exportUserData();
+        await cloudBackup.push(APP_ID, fresh);
+        dlog('PRUNE BASE64: cloud sync OK');
+      } catch (e) {
+        dlog('PRUNE BASE64: cloud sync failed: ' + e.message);
+      }
+    }
+  }
+  return { cleaned, bytesFreed };
+}
+
 async function exportUserData() {
   const userId = state.user.userId;
   const out = {
@@ -1699,6 +1910,134 @@ async function exportUserData() {
     if (!isNaN(idx)) out.dbHidden.push(idx);
   }
   return out;
+}
+
+/* ─── SNAPSHOT SYSTEM ─────────────────────────────────────
+   Salva automaticamente le ultime 5 versioni del backup
+   dentro l'app, così se qualcosa va storto puoi tornare
+   indietro con un tap senza dover cercare nei gist.
+   ──────────────────────────────────────────────────────── */
+const SNAPSHOT_MAX = 5;
+const SNAPSHOT_MIN_INTERVAL_MS = 30 * 60 * 1000; // crea max 1 snapshot ogni 30 min
+
+function _snapshotKey(userId, ts) {
+  return `snapshot:${userId}:${ts}`;
+}
+function _snapshotPrefix(userId) {
+  return `snapshot:${userId}:`;
+}
+
+async function saveSnapshot() {
+  if (!state.user || !state.user.userId) return null;
+  const userId = state.user.userId;
+  try {
+    // Lista snapshot esistenti, ordinati per timestamp desc
+    const existing = await listSnapshots();
+    // Se l'ultimo snapshot è recente (<30min), non crearne un altro per evitare flood
+    if (existing.length > 0) {
+      const latestMs = parseInt(existing[0].ts, 10);
+      if (Date.now() - latestMs < SNAPSHOT_MIN_INTERVAL_MS) {
+        dlog('SNAPSHOT: skip (last one is recent)');
+        return null;
+      }
+    }
+    const payload = await exportUserData();
+    // Mini stats (per mostrare nel profilo senza caricare tutto)
+    const stats = {
+      cf: (payload.customFoods || []).length,
+      tpl: (payload.mealTemplates || []).length,
+      diaryDays: Object.keys(payload.diary || {}).length,
+      diaryItems: Object.values(payload.diary || {}).reduce((s, day) => {
+        return s + ['breakfast','lunch','dinner','snack'].reduce((a, m) => a + (day[m] || []).length, 0);
+      }, 0),
+    };
+    const ts = Date.now();
+    const snap = {
+      ts,
+      createdAt: new Date(ts).toISOString(),
+      stats,
+      payload,
+    };
+    await ss(_snapshotKey(userId, ts), snap);
+    // Pulizia: tieni solo gli ultimi SNAPSHOT_MAX
+    const updated = await listSnapshots();
+    if (updated.length > SNAPSHOT_MAX) {
+      const toDelete = updated.slice(SNAPSHOT_MAX);
+      for (const s of toDelete) {
+        await sd(_snapshotKey(userId, s.ts));
+      }
+      dlog(`SNAPSHOT: created ${ts}, removed ${toDelete.length} old`);
+    } else {
+      dlog(`SNAPSHOT: created ${ts}, total ${updated.length}`);
+    }
+    return ts;
+  } catch (e) {
+    dlog('SNAPSHOT save FAIL: ' + e.message);
+    return null;
+  }
+}
+
+async function listSnapshots() {
+  if (!state.user || !state.user.userId) return [];
+  const userId = state.user.userId;
+  const keys = await sl(_snapshotPrefix(userId));
+  const list = [];
+  for (const k of keys) {
+    const ts = k.split(':').pop();
+    const snap = await sg(k);
+    if (snap) {
+      list.push({
+        ts,
+        createdAt: snap.createdAt,
+        stats: snap.stats || {},
+      });
+    }
+  }
+  // Ordina per ts desc (più recenti prima)
+  list.sort((a, b) => parseInt(b.ts, 10) - parseInt(a.ts, 10));
+  return list;
+}
+
+async function restoreSnapshot(ts) {
+  if (!state.user || !state.user.userId) return false;
+  const userId = state.user.userId;
+  const snap = await sg(_snapshotKey(userId, ts));
+  if (!snap || !snap.payload) {
+    dlog('SNAPSHOT restore: not found ' + ts);
+    return false;
+  }
+  // Sospendi sync mentre ripristiniamo
+  state._suspendAutoSync = true;
+  try {
+    // Cancella tutti i dati utente correnti
+    const prefixes = [
+      `diary:${userId}:`,
+      `customFoods:${userId}:`,
+      `mealTemplates:${userId}:`,
+      `dbOverrides:${userId}:`,
+      `dbAdditions:${userId}:`,
+      `dbHidden:${userId}:`,
+    ];
+    for (const p of prefixes) {
+      const keys = await sl(p);
+      for (const k of keys) await sd(k);
+    }
+    await sd(`goals:${userId}`);
+    // Importa i dati dello snapshot
+    await importUserData(snap.payload, { mode: 'replace' });
+    await loadAll();
+    dlog('SNAPSHOT restore: ok ' + ts);
+    return true;
+  } finally {
+    state._suspendAutoSync = false;
+  }
+}
+
+async function deleteSnapshot(ts) {
+  if (!state.user || !state.user.userId) return false;
+  const userId = state.user.userId;
+  await sd(_snapshotKey(userId, ts));
+  return true;
 }
 
 async function importUserData(payload, { mode = 'merge' } = {}) {
@@ -2785,6 +3124,56 @@ function searchCustomFoods(q) {
   return scored.map(s => s.food);
 }
 
+/* ─── MOST USED FOODS ─────────────────────────────────────
+   Calcola gli alimenti più usati dal diario di tutti i giorni
+   disponibili. Aggrega per nome+marca. Ritorna i top N.
+   ──────────────────────────────────────────────────────── */
+async function getMostUsedFoods(limit = 8) {
+  if (!state.user || !state.user.userId) return [];
+  const userId = state.user.userId;
+  const diaryKeys = await sl(`diary:${userId}:`);
+  // Conta uso di ogni alimento per nome+marca
+  const counts = new Map(); // key -> { food, count }
+  for (const k of diaryKeys) {
+    const day = await sg(k);
+    if (!day) continue;
+    for (const meal of ['breakfast','lunch','dinner','snack']) {
+      const items = day[meal] || [];
+      for (const it of items) {
+        const key = ((it.name || '') + '|' + (it.brand || '')).toLowerCase().trim();
+        if (!key || key === '|') continue;
+        const cur = counts.get(key);
+        if (cur) {
+          cur.count++;
+        } else {
+          // Salva una copia "pulita" dell'alimento (senza id specifico, senza grams)
+          counts.set(key, {
+            count: 1,
+            food: {
+              id: it.foodId || ('mu-' + uid()),
+              name: it.name,
+              brand: it.brand || '',
+              kcal: it.kcal || 0,
+              protein: it.protein || 0,
+              carbs: it.carbs || 0,
+              fat: it.fat || 0,
+              fiber: it.fiber || 0,
+              sugar: it.sugar || 0,
+              sodium: it.sodium || 0,
+              image_url: '',
+            },
+          });
+        }
+      }
+    }
+  }
+  // Sort per count desc e ritorna top N
+  return Array.from(counts.values())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit)
+    .map(x => ({ ...x.food, _usageCount: x.count }));
+}
+
 function searchTemplates(q) {
   const qLow = stripAccents(q.trim().toLowerCase());
   if (!qLow) return [];
@@ -3054,9 +3443,19 @@ async function boot() {
     setTimeout(() => {
       pruneOldDiaryEntries().catch(e => dlog('PRUNE auto FAIL: ' + e.message));
     }, 3000);
+    // Pulisci immagini base64 una volta per liberare spazio (eseguito una sola volta dopo update)
+    setTimeout(() => {
+      pruneBase64Images().then(r => {
+        if (r.cleaned > 0) toast(`Pulite ${r.cleaned} foto vecchie (~${(r.bytesFreed/1024).toFixed(0)}KB)`);
+      }).catch(e => dlog('PRUNE BASE64 FAIL: ' + e.message));
+    }, 5000);
     setTimeout(() => {
       cloudPullAuto().catch(e => dlog('AUTO-PULL outer FAIL: ' + e.message));
     }, 1000);
+    // Snapshot automatico al boot (max 1 ogni 30 min, mantiene gli ultimi 5)
+    setTimeout(() => {
+      saveSnapshot().catch(e => dlog('SNAPSHOT boot FAIL: ' + e.message));
+    }, 8000);
   }
 }
 
@@ -3486,35 +3885,49 @@ function renderMeal(key, title) {
   const items = state.diary[key] || [];
   const m = mealMacros(key);
   const hasFood = items.length > 0;
+  const inSelMode = state.selectionMode && state.selectionMode.meal === key;
+  const selectedIds = inSelMode ? state.selectionMode.selected : null;
+  const selCount = inSelMode ? selectedIds.size : 0;
+
   return `<div class="meal" data-meal="${key}">
     <div class="meal-head">
       <div class="meal-title"><span class="dot"></span>${esc(title)}</div>
       <div style="display:flex;align-items:center;gap:8px">
-        <div class="meal-kcal-wrap">
-          <div class="meal-kcal">${round(m.kcal)} kcal</div>
-          ${hasFood ? `<div class="meal-macros"><span style="color:var(--protein)">P ${round(m.protein, 1)}g</span> · <span style="color:var(--carbs)">C ${round(m.carbs, 1)}g</span> · <span style="color:var(--fat)">G ${round(m.fat, 1)}g</span></div>` : ''}
-        </div>
-        <button class="meal-copy-btn" data-copy-meal="${key}" aria-label="Copia da giorno precedente" title="Copia da un altro giorno">${I.copy}</button>
+        ${inSelMode ? `
+          <button class="meal-sel-cancel" data-sel-cancel="${key}" aria-label="Annulla selezione">Annulla</button>
+          <button class="meal-sel-delete" data-sel-delete="${key}" aria-label="Elimina selezionati" ${selCount === 0 ? 'disabled' : ''}>${I.trash} ${selCount > 0 ? selCount : ''}</button>
+        ` : `
+          <div class="meal-kcal-wrap">
+            <div class="meal-kcal">${round(m.kcal)} kcal</div>
+            ${hasFood ? `<div class="meal-macros"><span style="color:var(--protein)">P ${round(m.protein, 1)}g</span> · <span style="color:var(--carbs)">C ${round(m.carbs, 1)}g</span> · <span style="color:var(--fat)">G ${round(m.fat, 1)}g</span></div>` : ''}
+          </div>
+          ${hasFood ? `<button class="meal-sel-btn" data-sel-start="${key}" aria-label="Seleziona alimenti">${I.check}</button>` : ''}
+          <button class="meal-copy-btn" data-copy-meal="${key}" aria-label="Copia da giorno precedente" title="Copia da un altro giorno">${I.copy}</button>
+        `}
       </div>
     </div>
     <div class="meal-list">
       ${items.length === 0
         ? `<div class="meal-empty">Nessun alimento</div>`
-        : items.map(it => `
-          <div class="food-item" data-edit="${key}:${it.id}">
-            <div class="food-main">
-              <div class="food-name">${esc(it.name)}</div>
-              <div class="food-meta">${esc(it.brand ? it.brand + ' · ' : '')}${round(it.grams)}g · ${round(it.kcal * it.grams / 100)} kcal</div>
-            </div>
-            <button class="food-del" data-del="${key}:${it.id}" aria-label="Rimuovi">${I.trash}</button>
-          </div>`).join('')}
+        : items.map(it => {
+            const isSel = selectedIds && selectedIds.has(it.id);
+            return `
+              <div class="food-item ${inSelMode ? 'sel-mode' : ''} ${isSel ? 'sel' : ''}" ${inSelMode ? `data-sel-toggle="${key}:${it.id}"` : `data-edit="${key}:${it.id}"`}>
+                ${inSelMode ? `<div class="food-checkbox">${isSel ? I.check : ''}</div>` : ''}
+                <div class="food-main">
+                  <div class="food-name">${esc(it.name)}</div>
+                  <div class="food-meta">${esc(it.brand ? it.brand + ' · ' : '')}${round(it.grams)}g · ${round(it.kcal * it.grams / 100)} kcal</div>
+                </div>
+                ${!inSelMode ? `<button class="food-del" data-del="${key}:${it.id}" aria-label="Rimuovi">${I.trash}</button>` : ''}
+              </div>`;
+          }).join('')}
     </div>
-    <div class="meal-add">
+    ${!inSelMode ? `<div class="meal-add">
       <button data-add-quick="${key}">${I.bolt}<span>Rapido</span></button>
       <button data-add-search="${key}">${I.search}<span>Cerca</span></button>
       <button data-add-template="${key}">${I.stack}<span>Pasti</span></button>
       <button data-add-custom="${key}">${I.box}<span>I miei</span></button>
-    </div>
+    </div>` : ''}
   </div>`;
 }
 
@@ -3531,7 +3944,27 @@ function renderSearch() {
       <div style="margin-bottom:6px">Nessun risultato per "${esc(state.searchQuery)}"</div>
       <div style="font-size:12px;color:var(--text-3);margin-bottom:16px">Prova un termine più generico o crea un alimento custom</div>
     </div>`;
-  else if (state.searchState === 'idle' && !state.searchQuery) content = `<div class="state">${I.search}<div>Cerca un alimento per iniziare<br><small style="color:var(--text-3)">I tuoi alimenti, i tuoi pasti, il database</small></div></div>`;
+  else if (state.searchState === 'idle' && !state.searchQuery) {
+    const mu = state.mostUsedFoods || [];
+    if (mu.length > 0) {
+      content = `
+        <div style="font-size:11px;font-weight:600;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;padding:14px 4px 8px">I tuoi più usati</div>
+        ${mu.map(f => `
+          <div class="result" data-pick-mu="${esc(f.id)}">
+            <div class="result-img-placeholder">${I.leaf}</div>
+            <div class="result-main">
+              <div class="result-name">${esc(f.name)}</div>
+              <div class="result-sub">${esc(f.brand || 'Senza marca')} · ${round(f.kcal)} kcal/100g <span style="color:var(--text-3)">· ${f._usageCount}×</span></div>
+            </div>
+            <div class="result-action">${I.right}</div>
+          </div>
+        `).join('')}
+        <div style="font-size:11px;color:var(--text-3);text-align:center;padding:18px 12px 4px;line-height:1.5">Inizia a digitare per cercare nel database completo</div>
+      `;
+    } else {
+      content = `<div class="state">${I.search}<div>Cerca un alimento per iniziare<br><small style="color:var(--text-3)">I tuoi alimenti, i tuoi pasti, il database</small></div></div>`;
+    }
+  }
   else if (state.searchResults.length || (state.searchTemplateResults && state.searchTemplateResults.length)) {
     let parts = [];
     // Sezione: Pasti salvati che matchano (se ce ne sono)
@@ -3587,9 +4020,11 @@ function renderSearch() {
         <input type="search" class="search-input" id="q" placeholder="Es. yogurt greco, mela, pasta..." value="${esc(state.searchQuery)}">
       </div>
       ${state.searchQuery && state.searchQuery.length >= 2 ? `
-        <button id="ai-search-btn" class="ai-search-btn" type="button">
+        <button id="ai-search-btn" class="ai-search-btn ${state.aiSearchPending === state.searchQuery ? 'loading' : ''}" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 2l1.4 4.3L18 8l-4.6 1.7L12 14l-1.4-4.3L6 8l4.6-1.7L12 2z"/><path d="M5 17l.7 2 2 .7-2 .7L5 23l-.7-2.6L1.7 19.7l2-.7L5 17z"/><path d="M19 14l.5 1.5L21 16l-1.5.5L19 18l-.5-1.5L17 16l1.5-.5L19 14z"/></svg>
-          Cerca con AI: <strong>${esc(state.searchQuery)}</strong>
+          ${state.aiSearchPending === state.searchQuery
+            ? `Sto cercando: <strong>${esc(state.searchQuery)}</strong>`
+            : `Cerca con AI: <strong>${esc(state.searchQuery)}</strong>`}
         </button>
       ` : ''}
     </div>
@@ -3803,6 +4238,14 @@ function renderProfile() {
         <div class="list-item-main">
           <div class="list-item-title">Importa backup</div>
           <div class="list-item-sub">Carica un file di backup precedente</div>
+        </div>
+        <div class="chev">${I.right}</div>
+      </div>
+      <div class="list-item" data-go="snapshots">
+        <div class="list-item-icon">${I.refresh}</div>
+        <div class="list-item-main">
+          <div class="list-item-title">Cronologia backup</div>
+          <div class="list-item-sub">Versioni salvate automaticamente</div>
         </div>
         <div class="chev">${I.right}</div>
       </div>
@@ -5386,7 +5829,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.23.3';
+const APP_VERSION = '1.27.3';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -5950,6 +6393,94 @@ async function openCloudAppsSheet() {
   }
 }
 
+async function openSnapshotsSheet() {
+  openSheet(`
+    <h2 class="sheet-title">Cronologia backup</h2>
+    <p class="sheet-sub">Caricamento...</p>
+    <div class="spinner"></div>
+  `);
+  const snapshots = await listSnapshots();
+  const fmtDate = (iso) => {
+    try {
+      const d = new Date(iso);
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
+      return `${dd}/${mm} alle ${hh}:${min}`;
+    } catch (_) { return iso; }
+  };
+  const fmtRelative = (iso) => {
+    try {
+      const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+      if (diff < 60) return 'ora';
+      if (diff < 3600) return `${Math.floor(diff/60)}m fa`;
+      if (diff < 86400) return `${Math.floor(diff/3600)}h fa`;
+      return `${Math.floor(diff/86400)}g fa`;
+    } catch (_) { return ''; }
+  };
+
+  let body;
+  if (snapshots.length === 0) {
+    body = `
+      <div class="state" style="padding:40px 20px">
+        ${I.box}
+        <div style="margin-top:14px">Nessun backup salvato</div>
+        <div style="font-size:12px;color:var(--text-3);margin-top:6px;line-height:1.5">L'app salva automaticamente una versione dei tuoi dati ogni 30 minuti.<br>Riapri l'app dopo aver usato NutriLog per qualche giorno e troverai qui i backup.</div>
+      </div>
+    `;
+  } else {
+    body = `
+      <p style="font-size:12px;color:var(--text-3);margin:0 0 14px;line-height:1.5">Le ultime ${snapshots.length} versioni dei tuoi dati. Tap su una per ripristinarla. Massimo ${SNAPSHOT_MAX} salvate, le più vecchie vengono sostituite.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${snapshots.map((s, i) => `
+          <div class="copy-day-row" data-restore-snap="${esc(s.ts)}">
+            <div class="copy-day-main">
+              <div class="copy-day-title">${i === 0 ? '<span style="color:var(--accent);font-weight:600">●</span> ' : ''}${esc(fmtDate(s.createdAt))}<span class="copy-day-sub"> · ${esc(fmtRelative(s.createdAt))}</span></div>
+              <div class="copy-day-preview">${s.stats.cf || 0} alimenti · ${s.stats.tpl || 0} pasti · ${s.stats.diaryDays || 0} giorni · ${s.stats.diaryItems || 0} voci diario</div>
+            </div>
+            <button class="icon-btn" data-del-snap="${esc(s.ts)}" aria-label="Elimina" style="color:var(--text-3)" onclick="event.stopPropagation()">${I.trash}</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  openSheet(`
+    <h2 class="sheet-title">Cronologia backup</h2>
+    ${body}
+  `);
+
+  document.querySelectorAll('[data-restore-snap]').forEach(row => {
+    row.onclick = async () => {
+      const ts = row.dataset.restoreSnap;
+      if (!confirm('Ripristinare questa versione?\n\nI dati attuali verranno sostituiti con quelli del backup. Verrà creato automaticamente un nuovo punto di ripristino prima della sostituzione.')) return;
+      // Crea un nuovo snapshot prima del ripristino (in caso l'utente cambi idea)
+      await saveSnapshot();
+      const ok = await restoreSnapshot(ts);
+      if (ok) {
+        closeSheet();
+        toast('Backup ripristinato');
+        render();
+        // Forza push al cloud
+        scheduleCloudAutoSync();
+      } else {
+        toast('Ripristino fallito');
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-del-snap]').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const ts = btn.dataset.delSnap;
+      if (!confirm('Eliminare questo backup?')) return;
+      await deleteSnapshot(ts);
+      openSnapshotsSheet();
+    };
+  });
+}
+
 async function handleImport() {
   try {
     const data = await pickJSONFile();
@@ -6469,11 +7000,22 @@ const AI_CFG_KEY = 'aiVision::config';
 function getAiConfig() {
   try {
     const raw = localStorage.getItem(AI_CFG_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const cfg = JSON.parse(raw);
+    if (!cfg) return null;
+    // Backward compatibility: alcune versioni salvano come 'geminiKey', altre come 'apiKey'
+    const key = cfg.apiKey || cfg.geminiKey || '';
+    return { ...cfg, apiKey: key, geminiKey: key };
   } catch (_) { return null; }
 }
 function setAiConfig(cfg) {
-  try { localStorage.setItem(AI_CFG_KEY, JSON.stringify(cfg)); return true; }
+  try {
+    // Salva entrambi i nomi per compatibilità con tutto il codice
+    const key = cfg.apiKey || cfg.geminiKey || '';
+    const normalized = { ...cfg, apiKey: key, geminiKey: key };
+    localStorage.setItem(AI_CFG_KEY, JSON.stringify(normalized));
+    return true;
+  }
   catch (_) { return false; }
 }
 
@@ -6636,8 +7178,9 @@ async function analyzeFoodPhoto(file, meal) {
     fiber: round(num(parsed.fiber), 1),
     sugar: round(num(parsed.sugar), 1),
     sodium: round(num(parsed.sodium), 0),
-    image_url: img.dataUrl,
+    image_url: '', // NON salvare base64 (occupa MB!) - foto solo per anteprima sheet
     _ai: true,
+    _previewDataUrl: img.dataUrl, // anteprima volatile, non viene mai persistita
   };
   const portion = num(parsed.portionGrams, 100) || 100;
   openPhotoConfirmSheet(food, portion, meal, parsed.confidence || 'medium', parsed.notes || '');
@@ -6645,13 +7188,15 @@ async function analyzeFoodPhoto(file, meal) {
 
 function openPhotoConfirmSheet(food, portion, meal, confidence, notes) {
   const conf = { high: { label: 'Alta', color: 'var(--accent)' }, medium: { label: 'Media', color: 'var(--warning)' }, low: { label: 'Bassa', color: 'var(--danger)' } }[confidence] || { label: 'Media', color: 'var(--warning)' };
+  // Usa la preview volatile se c'è, altrimenti niente immagine
+  const previewSrc = food._previewDataUrl || food.image_url || '';
 
   openSheet(`
     <h2 class="sheet-title">Conferma alimento</h2>
     <p class="sheet-sub">L'AI ha analizzato la foto. Verifica e dai un nome se serve.</p>
 
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      <img src="${esc(food.image_url)}" style="width:64px;height:64px;border-radius:12px;object-fit:cover;border:1px solid var(--border)">
+      ${previewSrc ? `<img src="${esc(previewSrc)}" style="width:64px;height:64px;border-radius:12px;object-fit:cover;border:1px solid var(--border)">` : ''}
       <div style="flex:1;min-width:0">
         <div style="font-size:11px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:2px">Confidenza</div>
         <div style="font-size:14px;font-weight:600;color:${conf.color}">${conf.label}</div>
@@ -6997,6 +7542,24 @@ function bindApp() {
       // - photo: pasto suggerito dall'orario corrente
       if (next === 'search' && state.tab !== next) {
         state.targetMeal = 'breakfast';
+        // Reset search ogni volta che si entra nella tab (non ricordare ricerche precedenti)
+        state.searchQuery = '';
+        state.searchResults = [];
+        state.searchTemplateResults = [];
+        state.searchState = 'idle';
+        // Carica gli alimenti più usati in background (non blocca il render)
+        getMostUsedFoods(8).then(list => {
+          state.mostUsedFoods = list;
+          if (state.tab === 'search' && !state.searchQuery) render();
+        }).catch(e => dlog('mostUsed FAIL: ' + e.message));
+      }
+      // Se si esce DA search, resetta lo stato della ricerca
+      if (state.tab === 'search' && next !== 'search') {
+        state.searchQuery = '';
+        state.searchResults = [];
+        state.searchTemplateResults = [];
+        state.searchState = 'idle';
+        state.aiSearchPending = null;
       }
       if (next === 'photo' && state.tab !== next) {
         state.targetMeal = suggestMealByTime();
@@ -7057,6 +7620,7 @@ function bindApp() {
         }
       }
       state.date = newDate;
+      state.selectionMode = null; // reset selezione al cambio data
       await loadDiary(state.date);
       render();
     };
@@ -7097,6 +7661,81 @@ function bindApp() {
     };
   });
 
+  // Selection mode: enter
+  document.querySelectorAll('[data-sel-start]').forEach(b => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      const meal = b.dataset.selStart;
+      state.selectionMode = { meal, selected: new Set() };
+      render();
+    };
+  });
+  // Selection mode: cancel
+  document.querySelectorAll('[data-sel-cancel]').forEach(b => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      state.selectionMode = null;
+      render();
+    };
+  });
+  // Selection mode: toggle item
+  document.querySelectorAll('[data-sel-toggle]').forEach(row => {
+    row.onclick = (e) => {
+      e.stopPropagation();
+      const [meal, id] = row.dataset.selToggle.split(':');
+      if (!state.selectionMode || state.selectionMode.meal !== meal) return;
+      if (state.selectionMode.selected.has(id)) {
+        state.selectionMode.selected.delete(id);
+      } else {
+        state.selectionMode.selected.add(id);
+      }
+      render();
+    };
+  });
+  // Selection mode: bulk delete
+  // Selection mode: bulk delete con UNDO
+  document.querySelectorAll('[data-sel-delete]').forEach(b => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      if (b.disabled) return;
+      const meal = b.dataset.selDelete;
+      if (!state.selectionMode || state.selectionMode.meal !== meal) return;
+      const ids = Array.from(state.selectionMode.selected);
+      if (ids.length === 0) return;
+      if (!confirm(`Eliminare ${ids.length} aliment${ids.length === 1 ? 'o' : 'i'} dal pasto?`)) return;
+      // Salva backup degli items cancellati per l'undo
+      const allItems = state.diary[meal] || [];
+      const deletedItems = allItems.filter(it => state.selectionMode.selected.has(it.id));
+      const deletedDate = state.date; // memorizza quale data per undo coerente
+      // Cancella tutti gli items selezionati direttamente sullo state, poi salva una sola volta
+      state.diary[meal] = allItems.filter(it => !state.selectionMode.selected.has(it.id));
+      await saveDiary();
+      state.selectionMode = null;
+      render();
+      // Toast con undo per 5 secondi
+      toastWithUndo(
+        `${ids.length} aliment${ids.length === 1 ? 'o eliminato' : 'i eliminati'}`,
+        async () => {
+          // Solo se siamo ancora sullo stesso giorno (altrimenti potrebbe creare confusione)
+          if (state.date !== deletedDate) {
+            // Carica il diario di quel giorno, ripristina lì, salva, ricarica oggi
+            const dayKey = `diary:${state.user.userId}:${deletedDate}`;
+            const day = (await sg(dayKey)) || { breakfast: [], lunch: [], dinner: [], snack: [] };
+            day[meal] = [...(day[meal] || []), ...deletedItems];
+            await ss(dayKey, day);
+            scheduleCloudAutoSync();
+            toast('Ripristinati');
+            return;
+          }
+          state.diary[meal] = [...(state.diary[meal] || []), ...deletedItems];
+          await saveDiary();
+          render();
+          toast('Ripristinati');
+        }
+      );
+    };
+  });
+
   // FAB quick add
   const fab = document.getElementById('fab-add');
   if (fab) fab.onclick = openFabMenu;
@@ -7105,7 +7744,17 @@ function bindApp() {
   document.querySelectorAll('[data-add-search]').forEach(b => {
     b.onclick = () => {
       state.targetMeal = b.dataset.addSearch;
+      // Reset ricerca per non ricordare la query precedente
+      state.searchQuery = '';
+      state.searchResults = [];
+      state.searchTemplateResults = [];
+      state.searchState = 'idle';
       state.tab = 'search';
+      // Carica i più usati in background
+      getMostUsedFoods(8).then(list => {
+        state.mostUsedFoods = list;
+        if (state.tab === 'search' && !state.searchQuery) render();
+      }).catch(e => dlog('mostUsed FAIL: ' + e.message));
       render();
       setTimeout(() => document.getElementById('q')?.focus(), 50);
     };
@@ -7135,29 +7784,39 @@ function bindApp() {
     aiBtn.onclick = async () => {
       const query = state.searchQuery;
       if (!query || query.length < 2) return;
-      aiBtn.classList.add('loading');
-      aiBtn.querySelector('strong').textContent = 'Sto cercando...';
+      // Se già stiamo cercando questa stessa query, non rifare
+      if (state.aiSearchPending === query) return;
+      state.aiSearchPending = query;
+      // Re-render solo se siamo ancora nella tab search (per non interferire con altre tab)
+      if (state.tab === 'search') render();
       try {
         const aiResults = await aiSearchFoodSpecific(query);
-        if (!aiResults || aiResults.length === 0) {
-          toast('AI non ha trovato risultati per "' + query + '"');
-          aiBtn.classList.remove('loading');
-          aiBtn.querySelector('strong').textContent = query;
+        // Rilascia il flag pending solo se è ancora la nostra query
+        if (state.aiSearchPending === query) state.aiSearchPending = null;
+        // Se nel frattempo l'utente ha cambiato la query o tab, ignora i risultati
+        if (state.searchQuery !== query || state.tab !== 'search') {
+          if (state.tab === 'search') render();
           return;
         }
-        // Marca i risultati come AI e mette in cima alla lista
+        if (!aiResults || aiResults.length === 0) {
+          toast('AI non ha trovato risultati per "' + query + '"');
+          render();
+          return;
+        }
+        // Marca i risultati come AI
         const tagged = aiResults.map(r => ({ ...r, _ai: true }));
-        // Deduplica con risultati esistenti per nome+marca
-        const seen = new Set(state.searchResults.map(f => stripAccents((f.name + '|' + (f.brand || '')).toLowerCase())));
+        // Rimuovi eventuali risultati AI precedenti (con _ai true) per non accumularli
+        const nonAi = state.searchResults.filter(f => !f._ai);
+        const seen = new Set(nonAi.map(f => stripAccents((f.name + '|' + (f.brand || '')).toLowerCase())));
         const fresh = tagged.filter(f => !seen.has(stripAccents((f.name + '|' + (f.brand || '')).toLowerCase())));
-        state.searchResults = [...fresh, ...state.searchResults];
+        state.searchResults = [...fresh, ...nonAi];
         state.searchState = state.searchResults.length ? 'results' : 'empty';
-        updateSearchResults();
+        render();
         toast(`AI: ${fresh.length} nuov${fresh.length === 1 ? 'o risultato' : 'i risultati'}`);
       } catch (e) {
+        if (state.aiSearchPending === query) state.aiSearchPending = null;
+        if (state.tab === 'search') render();
         toast('Errore AI: ' + (e.message || 'rete'));
-        aiBtn.classList.remove('loading');
-        aiBtn.querySelector('strong').textContent = query;
       }
     };
   }
@@ -7175,6 +7834,7 @@ function bindApp() {
       if (go === 'cloud') openCloudSheet();
       if (go === 'export') handleExport();
       if (go === 'import') handleImport();
+      if (go === 'snapshots') openSnapshotsSheet();
       if (go === 'migrate') openMigrateSheet();
       if (go === 'ai-setup') openAiSetupSheet();
       if (go === 'version-info') openVersionInfoSheet();
@@ -7195,6 +7855,13 @@ function bindSearchResults() {
   document.querySelectorAll('[data-pick]').forEach(el => {
     el.onclick = () => {
       const f = state.searchResults.find(x => String(x.id) === el.dataset.pick);
+      if (f) openAddFood(f, state.targetMeal);
+    };
+  });
+  // Click su un alimento "più usato" (idle search state)
+  document.querySelectorAll('[data-pick-mu]').forEach(el => {
+    el.onclick = () => {
+      const f = (state.mostUsedFoods || []).find(x => String(x.id) === el.dataset.pickMu);
       if (f) openAddFood(f, state.targetMeal);
     };
   });
