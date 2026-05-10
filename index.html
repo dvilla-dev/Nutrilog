@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.27.6 -->
+<!-- NUTRILOG_VERSION: 1.27.7 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -3575,17 +3575,21 @@ function render() {
   }
   if (state.screen === 'login')    { app.innerHTML = renderLogin(); bindAuth(); return; }
   if (state.screen === 'register') { app.innerHTML = renderRegister(); bindAuth(); return; }
-  // Determina lo scroll target:
-  // 1) Se c'è uno scroll salvato prima di un sheet (e siamo nella stessa tab), usalo
-  // 2) Altrimenti usa lo scrollTop attuale dello screen (se stessa tab)
-  // 3) Altrimenti 0 (cambio tab o primo render)
+  // Salva lo scroll attuale nella mappa per-tab (per la tab che stiamo per lasciare)
   const prevScreen = document.getElementById('screen');
+  if (prevScreen && _lastRenderedTab) {
+    _tabScroll[_lastRenderedTab] = prevScreen.scrollTop;
+  }
+  // Determina lo scroll target per la tab che stiamo per renderizzare:
+  // 1) Se c'è uno scroll salvato prima di aprire un sheet ed è per la stessa tab, usalo
+  // 2) Altrimenti usa lo scroll memorizzato per questa tab (visita precedente)
+  // 3) Altrimenti 0
   let scrollTarget = 0;
   if (_savedScrollBeforeSheet && _savedScrollBeforeSheet.tab === state.tab) {
     scrollTarget = _savedScrollBeforeSheet.scrollTop;
     _savedScrollBeforeSheet = null;
-  } else if (prevScreen && state.tab === _lastRenderedTab) {
-    scrollTarget = prevScreen.scrollTop;
+  } else if (_tabScroll[state.tab] != null) {
+    scrollTarget = _tabScroll[state.tab];
   }
   app.innerHTML = renderAppShell();
   bindApp();
@@ -4323,6 +4327,10 @@ function renderProfile() {
 let _sheetGen = 0;  // Incrementato ad ogni openSheet/closeSheet, usato dai debounce per evitare leak
 
 let _savedScrollBeforeSheet = null;
+// Memoria scroll per tab: quando lasciamo una tab, salviamo dov'eravamo.
+// Quando ci torniamo dopo aver fatto un'azione (es. aggiungere da Cerca),
+// l'utente si ritrova nella stessa posizione.
+const _tabScroll = Object.create(null);
 function openSheet(html) {
   // Salva la scroll position dello screen principale PRIMA di aprire lo sheet,
   // così possiamo ripristinarla dopo che lo sheet si chiude e render() si esegue
@@ -5860,7 +5868,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.27.6';
+const APP_VERSION = '1.27.7';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -7560,8 +7568,10 @@ function bindApp() {
   document.querySelectorAll('.tab').forEach(t => {
     t.onclick = async () => {
       const next = t.dataset.tab;
-      // Cambio tab esplicito: scarta scroll memorizzato
+      // Cambio tab esplicito tramite tab bar: scarta scroll memorizzato
       _savedScrollBeforeSheet = null;
+      // L'utente vuole iniziare dalla cima nella tab nuova
+      _tabScroll[next] = 0;
       // Se l'utente tappa "Oggi" mentre è già sulla tab today ma su un giorno diverso,
       // riporta al giorno corrente (utility quando si è navigato avanti/indietro).
       if (next === 'today' && state.tab === 'today' && state.date !== todayISO()) {
