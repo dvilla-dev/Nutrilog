@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.27.7 -->
+<!-- NUTRILOG_VERSION: 1.28.0 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -939,6 +939,36 @@
     background: var(--accent);
     color: var(--accent-text);
     border-color: var(--accent);
+  }
+
+  /* ─── UNIT TOGGLE (g / pezzi) ─────────────────────── */
+  .unit-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 14px;
+    padding: 4px;
+    background: var(--surface-2);
+    border-radius: var(--r-btn);
+    border: 1px solid var(--border);
+  }
+  .unit-toggle button {
+    padding: 9px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-2);
+    font-size: 13px;
+    font-weight: 500;
+    transition: all var(--dur) var(--ease);
+    cursor: pointer;
+  }
+  .unit-toggle button:active { transform: scale(0.98); }
+  .unit-toggle button.sel {
+    background: var(--surface);
+    color: var(--accent);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
   }
 
   /* ─── PORTION BAR ─────────────────────────────────── */
@@ -4385,6 +4415,52 @@ function openSheet(html) {
       sheet.style.transform = '';
     }
   });
+
+  // Edge-swipe da sinistra a destra per chiudere (come iOS back).
+  // Si attiva solo se il dito parte dai primi 30px dal bordo sinistro,
+  // per non interferire con lo scroll della lista interna.
+  let edgeStartX = 0;
+  let edgeStartY = 0;
+  let edgeCurrentX = 0;
+  let edgeCurrentY = 0;
+  let edgeDragging = false;
+  sheet.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    if (t.clientX > 30) return; // solo dal bordo sinistro
+    edgeStartX = t.clientX;
+    edgeStartY = t.clientY;
+    edgeCurrentX = edgeStartX;
+    edgeCurrentY = edgeStartY;
+    edgeDragging = true;
+    sheet.style.transition = 'none';
+  }, { passive: true });
+  sheet.addEventListener('touchmove', (e) => {
+    if (!edgeDragging) return;
+    edgeCurrentX = e.touches[0].clientX;
+    edgeCurrentY = e.touches[0].clientY;
+    const dx = edgeCurrentX - edgeStartX;
+    const dy = Math.abs(edgeCurrentY - edgeStartY);
+    // Se il movimento è prevalentemente verticale, abbandona (è uno scroll)
+    if (dy > Math.abs(dx) + 10) {
+      edgeDragging = false;
+      sheet.style.transform = '';
+      sheet.style.transition = '';
+      return;
+    }
+    if (dx > 0) sheet.style.transform = `translateX(${dx}px)`;
+  }, { passive: true });
+  sheet.addEventListener('touchend', () => {
+    if (!edgeDragging) return;
+    edgeDragging = false;
+    const dx = edgeCurrentX - edgeStartX;
+    sheet.style.transition = '';
+    if (dx > 80) {
+      closeSheet();
+    } else {
+      sheet.style.transform = '';
+    }
+  });
 }
 function closeSheet() {
   _sheetGen++;
@@ -4398,11 +4474,17 @@ function closeSheet() {
 async function openAddFood(food, defaultMeal = 'breakfast') {
   // Recupera l'ultima quantità usata per questo alimento (default 100g)
   const rememberedGrams = await getRememberedGrams(food, 100);
-  state.addFood = { food, meal: defaultMeal, grams: rememberedGrams };
+  state.addFood = { food, meal: defaultMeal, grams: rememberedGrams, unitMode: false };
   const f = food;
   const initialGrams = rememberedGrams;
   const factor = initialGrams / 100;
   const meals = [['breakfast','Colazione'],['lunch','Pranzo'],['dinner','Cena'],['snack','Spuntino']];
+  // Se l'alimento ha un'unità (es. 1 uovo = 55g), mostra un toggle g/pezzi
+  const hasUnit = f.unitName && f.unitGrams > 0;
+  const unitName = (f.unitName || '').toLowerCase();
+  const unitGrams = f.unitGrams || 0;
+  // Calcola il numero di pezzi corrispondenti ai grammi iniziali
+  const initialPieces = hasUnit ? Math.round((initialGrams / unitGrams) * 10) / 10 : 0;
   const html = `
     <h2 class="sheet-title">${esc(f.name)}</h2>
     <p class="sheet-sub">${esc(f.brand || 'Senza marca')}</p>
@@ -4417,7 +4499,14 @@ async function openAddFood(food, defaultMeal = 'breakfast') {
       <div style="font-size:10px;color:var(--text-3);text-align:center;margin-top:10px;letter-spacing:0.1em;text-transform:uppercase">Valori per 100g</div>
     </div>
 
-    <div class="field">
+    ${hasUnit ? `
+      <div class="unit-toggle" id="unit-toggle">
+        <button type="button" data-unit-mode="grams" class="sel">Grammi</button>
+        <button type="button" data-unit-mode="pieces">Pezzi (${esc(unitName)})</button>
+      </div>
+    ` : ''}
+
+    <div class="field" id="grams-field">
       <label style="display:flex;align-items:center;justify-content:space-between">
         <span>Quantità (grammi)</span>
         ${rememberedGrams !== 100 ? `<span style="font-size:10px;color:var(--accent);font-weight:500;text-transform:uppercase;letter-spacing:0.06em">Ultimo inserimento</span>` : ''}
@@ -4432,6 +4521,21 @@ async function openAddFood(food, defaultMeal = 'breakfast') {
       <input class="input" type="number" id="grams" inputmode="numeric" min="1" max="5000" value="${initialGrams}" step="1" style="margin-top:8px">
       <div style="font-size:10.5px;color:var(--text-3);margin-top:6px;letter-spacing:0.02em">Porzione base: ${initialGrams}g · tap × per moltiplicare</div>
     </div>
+
+    ${hasUnit ? `
+      <div class="field" id="pieces-field" style="display:none">
+        <label>Quantità (numero di ${esc(unitName)})</label>
+        <div class="portion-bar">
+          <button type="button" class="portion-btn" data-pieces-op="dec" aria-label="Diminuisci">−</button>
+          <button type="button" class="portion-btn portion-num" data-pieces="0.5">½</button>
+          <button type="button" class="portion-btn portion-num" data-pieces="1">1</button>
+          <button type="button" class="portion-btn portion-num" data-pieces="2">2</button>
+          <button type="button" class="portion-btn" data-pieces-op="inc" aria-label="Aumenta">+</button>
+        </div>
+        <input class="input" type="number" id="pieces" inputmode="decimal" min="0.1" max="100" value="${initialPieces}" step="0.5" style="margin-top:8px">
+        <div style="font-size:10.5px;color:var(--text-3);margin-top:6px;letter-spacing:0.02em">1 ${esc(unitName)} = ${round(unitGrams)}g</div>
+      </div>
+    ` : ''}
 
     <div class="field">
       <label>Aggiungi a</label>
@@ -4535,6 +4639,66 @@ function bindAddFoodSheet() {
     state.addFood.meal = b.dataset.mealPick;
     mp.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x.dataset.mealPick === state.addFood.meal));
   });
+
+  // Gestione toggle Grammi/Pezzi + input pezzi (solo se l'alimento ha un'unità definita)
+  const unitToggle = document.getElementById('unit-toggle');
+  const piecesEl = document.getElementById('pieces');
+  const gramsField = document.getElementById('grams-field');
+  const piecesField = document.getElementById('pieces-field');
+  const unitGramsVal = f.unitGrams || 0;
+  if (unitToggle && piecesEl && unitGramsVal > 0) {
+    // Sync iniziale dei pezzi dai grammi
+    piecesEl.value = Math.round((num(gramsEl.value, 0) / unitGramsVal) * 10) / 10;
+    // Click sul toggle
+    unitToggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-unit-mode]');
+      if (!btn) return;
+      const mode = btn.dataset.unitMode;
+      unitToggle.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x.dataset.unitMode === mode));
+      if (mode === 'pieces') {
+        gramsField.style.display = 'none';
+        piecesField.style.display = '';
+        // Aggiorna pezzi dal valore corrente dei grammi
+        piecesEl.value = Math.round((num(gramsEl.value, 0) / unitGramsVal) * 10) / 10;
+      } else {
+        piecesField.style.display = 'none';
+        gramsField.style.display = '';
+      }
+    });
+    // Quando l'utente modifica i pezzi, aggiorna i grammi internamente e il preview
+    piecesEl.oninput = () => {
+      const pieces = num(piecesEl.value, 0);
+      const g = Math.round(pieces * unitGramsVal);
+      if (g > 0 && g <= 5000) {
+        gramsEl.value = g;
+        update();
+      }
+    };
+    // Bottoni preset pezzi (½, 1, 2)
+    const piecesPortionBar = piecesField.querySelector('.portion-bar');
+    if (piecesPortionBar) {
+      piecesPortionBar.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const op = btn.dataset.piecesOp;
+        const pieces = btn.dataset.pieces;
+        const cur = num(piecesEl.value, 1);
+        let next = cur;
+        if (op === 'inc') next = Math.round((cur + 1) * 10) / 10;
+        else if (op === 'dec') next = Math.max(0.1, Math.round((cur - 1) * 10) / 10);
+        else if (pieces) next = parseFloat(pieces);
+        if (next > 0) {
+          piecesEl.value = next;
+          const g = Math.round(next * unitGramsVal);
+          if (g > 0 && g <= 5000) {
+            gramsEl.value = g;
+            update();
+          }
+        }
+      });
+    }
+  }
+
   document.getElementById('add-confirm').onclick = async () => {
     const g = num(gramsEl.value, 0);
     if (g <= 0) { toast('Inserisci una quantità valida'); return; }
@@ -5302,7 +5466,7 @@ function openDbFoodEditor(food) {
 
 function openCustomFoodEditor(food) {
   state.editFood = food;
-  const f = food || { name: '', brand: '', kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, notes: '' };
+  const f = food || { name: '', brand: '', kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, notes: '', unitName: '', unitGrams: 0 };
   const html = `
     <h2 class="sheet-title">${food ? 'Modifica' : 'Nuovo'} alimento</h2>
     <p class="sheet-sub">Valori nutrizionali per 100g.</p>
@@ -5323,7 +5487,15 @@ function openCustomFoodEditor(food) {
         <div class="field"><label>Zucch.</label><input class="input" type="number" step="0.1" min="0" name="sugar" value="${f.sugar}"></div>
         <div class="field"><label>Sodio (mg)</label><input class="input" type="number" step="1" min="0" name="sodium" value="${f.sodium}"></div>
       </div>
-      <div class="field">
+      <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:6px">
+        <div style="font-size:11px;color:var(--text-3);font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">Unità (opzionale)</div>
+        <p style="font-size:12px;color:var(--text-3);margin:0 0 10px;line-height:1.4">Se vuoi contare in pezzi (es. "1 uovo", "1 fetta") invece dei grammi, compila entrambi i campi qui sotto.</p>
+        <div class="row-2">
+          <div class="field"><label>Nome unità</label><input class="input" name="unitName" value="${esc(f.unitName || '')}" placeholder="uovo, fetta, tazza..."></div>
+          <div class="field"><label>Grammi per pezzo</label><input class="input" type="number" step="0.1" min="0" name="unitGrams" value="${f.unitGrams || ''}" placeholder="55"></div>
+        </div>
+      </div>
+      <div class="field" style="margin-top:14px">
         <label>Note <span style="color:var(--text-3);font-weight:400;text-transform:none;letter-spacing:0">(opzionale)</span></label>
         <textarea class="input" name="notes" rows="3" placeholder="Es. da Esselunga, ricetta della nonna, allergico al lattosio, ecc." style="resize:vertical;min-height:64px;font-family:inherit;line-height:1.5">${esc(f.notes || '')}</textarea>
       </div>
@@ -5365,8 +5537,15 @@ function openCustomFoodEditor(food) {
       sugar: num(fd.get('sugar')),
       sodium: num(fd.get('sodium')),
       notes: (fd.get('notes') || '').trim(),
+      unitName: (fd.get('unitName') || '').trim(),
+      unitGrams: num(fd.get('unitGrams')),
     };
     if (!payload.name) { toast('Nome obbligatorio'); return; }
+    // L'unità ha senso solo se entrambi i campi sono compilati
+    if (!payload.unitName || payload.unitGrams <= 0) {
+      payload.unitName = '';
+      payload.unitGrams = 0;
+    }
     await saveCustomFood(payload);
     await loadCustomFoods();
     toast(food ? 'Alimento aggiornato' : 'Alimento creato');
@@ -5868,7 +6047,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.27.7';
+const APP_VERSION = '1.28.0';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
