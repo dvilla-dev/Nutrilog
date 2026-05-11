@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.28.0 -->
+<!-- NUTRILOG_VERSION: 1.28.1 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -2560,6 +2560,8 @@ async function addFoodToDiary(meal, food, grams) {
     sugar: num(food.sugar),
     sodium: num(food.sodium),
     image_url: food.image_url || '',
+    // Se l'alimento è "per pezzo", salva il nome dell'unità per la visualizzazione
+    unitName: food.unitName || '',
   };
   state.diary[meal] = state.diary[meal] || [];
   state.diary[meal].push(entry);
@@ -3969,12 +3971,16 @@ function renderMeal(key, title) {
         ? `<div class="meal-empty">Nessun alimento</div>`
         : items.map(it => {
             const isSel = selectedIds && selectedIds.has(it.id);
+            // Se l'alimento ha un'unità (es. "uovo"), mostra "1 uovo" invece di "100g"
+            const quantityLabel = it.unitName
+              ? `${round(it.grams / 100, 1)} ${esc(it.unitName)}${it.grams / 100 !== 1 ? '' : ''}`
+              : `${round(it.grams)}g`;
             return `
               <div class="food-item ${inSelMode ? 'sel-mode' : ''} ${isSel ? 'sel' : ''}" ${inSelMode ? `data-sel-toggle="${key}:${it.id}"` : `data-edit="${key}:${it.id}"`}>
                 ${inSelMode ? `<div class="food-checkbox">${isSel ? I.check : ''}</div>` : ''}
                 <div class="food-main">
                   <div class="food-name">${esc(it.name)}</div>
-                  <div class="food-meta">${esc(it.brand ? it.brand + ' · ' : '')}${round(it.grams)}g · ${round(it.kcal * it.grams / 100)} kcal</div>
+                  <div class="food-meta">${esc(it.brand ? it.brand + ' · ' : '')}${quantityLabel} · ${round(it.kcal * it.grams / 100)} kcal</div>
                 </div>
                 ${!inSelMode ? `<button class="food-del" data-del="${key}:${it.id}" aria-label="Rimuovi">${I.trash}</button>` : ''}
               </div>`;
@@ -4496,46 +4502,39 @@ async function openAddFood(food, defaultMeal = 'breakfast') {
         <div><div style="font-size:18px;font-weight:700;color:var(--carbs)">${round(f.carbs,1)}</div><div style="font-size:10px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:2px">Carb</div></div>
         <div><div style="font-size:18px;font-weight:700;color:var(--fat)">${round(f.fat,1)}</div><div style="font-size:10px;color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;margin-top:2px">Grassi</div></div>
       </div>
-      <div style="font-size:10px;color:var(--text-3);text-align:center;margin-top:10px;letter-spacing:0.1em;text-transform:uppercase">Valori per 100g</div>
+      <div style="font-size:10px;color:var(--text-3);text-align:center;margin-top:10px;letter-spacing:0.1em;text-transform:uppercase">${hasUnit ? `Valori per 1 ${esc(unitName)}` : 'Valori per 100g'}</div>
     </div>
 
     ${hasUnit ? `
-      <div class="unit-toggle" id="unit-toggle">
-        <button type="button" data-unit-mode="grams" class="sel">Grammi</button>
-        <button type="button" data-unit-mode="pieces">Pezzi (${esc(unitName)})</button>
-      </div>
-    ` : ''}
-
-    <div class="field" id="grams-field">
-      <label style="display:flex;align-items:center;justify-content:space-between">
-        <span>Quantità (grammi)</span>
-        ${rememberedGrams !== 100 ? `<span style="font-size:10px;color:var(--accent);font-weight:500;text-transform:uppercase;letter-spacing:0.06em">Ultimo inserimento</span>` : ''}
-      </label>
-      <div class="portion-bar" id="portion-bar" data-base-grams="${initialGrams}">
-        <button type="button" class="portion-btn" data-portion-op="dec" aria-label="Diminuisci porzione">−</button>
-        <button type="button" class="portion-btn portion-num" data-portion="1">1×</button>
-        <button type="button" class="portion-btn portion-num" data-portion="2">2×</button>
-        <button type="button" class="portion-btn portion-num" data-portion="3">3×</button>
-        <button type="button" class="portion-btn" data-portion-op="inc" aria-label="Aumenta porzione">+</button>
-      </div>
-      <input class="input" type="number" id="grams" inputmode="numeric" min="1" max="5000" value="${initialGrams}" step="1" style="margin-top:8px">
-      <div style="font-size:10.5px;color:var(--text-3);margin-top:6px;letter-spacing:0.02em">Porzione base: ${initialGrams}g · tap × per moltiplicare</div>
-    </div>
-
-    ${hasUnit ? `
-      <div class="field" id="pieces-field" style="display:none">
-        <label>Quantità (numero di ${esc(unitName)})</label>
-        <div class="portion-bar">
+      <div class="field">
+        <label>Quantità (${esc(unitName)})</label>
+        <div class="portion-bar" id="pieces-bar">
           <button type="button" class="portion-btn" data-pieces-op="dec" aria-label="Diminuisci">−</button>
           <button type="button" class="portion-btn portion-num" data-pieces="0.5">½</button>
           <button type="button" class="portion-btn portion-num" data-pieces="1">1</button>
           <button type="button" class="portion-btn portion-num" data-pieces="2">2</button>
           <button type="button" class="portion-btn" data-pieces-op="inc" aria-label="Aumenta">+</button>
         </div>
-        <input class="input" type="number" id="pieces" inputmode="decimal" min="0.1" max="100" value="${initialPieces}" step="0.5" style="margin-top:8px">
-        <div style="font-size:10.5px;color:var(--text-3);margin-top:6px;letter-spacing:0.02em">1 ${esc(unitName)} = ${round(unitGrams)}g</div>
+        <input class="input" type="number" id="pieces" inputmode="decimal" min="0.1" max="100" value="${rememberedGrams / 100}" step="0.5" style="margin-top:8px">
+        <input type="hidden" id="grams" value="${rememberedGrams}">
       </div>
-    ` : ''}
+    ` : `
+      <div class="field">
+        <label style="display:flex;align-items:center;justify-content:space-between">
+          <span>Quantità (grammi)</span>
+          ${rememberedGrams !== 100 ? `<span style="font-size:10px;color:var(--accent);font-weight:500;text-transform:uppercase;letter-spacing:0.06em">Ultimo inserimento</span>` : ''}
+        </label>
+        <div class="portion-bar" id="portion-bar" data-base-grams="${initialGrams}">
+          <button type="button" class="portion-btn" data-portion-op="dec" aria-label="Diminuisci porzione">−</button>
+          <button type="button" class="portion-btn portion-num" data-portion="1">1×</button>
+          <button type="button" class="portion-btn portion-num" data-portion="2">2×</button>
+          <button type="button" class="portion-btn portion-num" data-portion="3">3×</button>
+          <button type="button" class="portion-btn" data-portion-op="inc" aria-label="Aumenta porzione">+</button>
+        </div>
+        <input class="input" type="number" id="grams" inputmode="numeric" min="1" max="5000" value="${initialGrams}" step="1" style="margin-top:8px">
+        <div style="font-size:10.5px;color:var(--text-3);margin-top:6px;letter-spacing:0.02em">Porzione base: ${initialGrams}g · tap × per moltiplicare</div>
+      </div>
+    `}
 
     <div class="field">
       <label>Aggiungi a</label>
@@ -4640,44 +4639,22 @@ function bindAddFoodSheet() {
     mp.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x.dataset.mealPick === state.addFood.meal));
   });
 
-  // Gestione toggle Grammi/Pezzi + input pezzi (solo se l'alimento ha un'unità definita)
-  const unitToggle = document.getElementById('unit-toggle');
+  // Gestione input pezzi: se l'alimento è in modalità pezzo, l'input #grams è hidden
+  // e contiene "100 * numero_pezzi" (1 pezzo = 100g virtuali per i calcoli con kcal/100g).
   const piecesEl = document.getElementById('pieces');
-  const gramsField = document.getElementById('grams-field');
-  const piecesField = document.getElementById('pieces-field');
-  const unitGramsVal = f.unitGrams || 0;
-  if (unitToggle && piecesEl && unitGramsVal > 0) {
-    // Sync iniziale dei pezzi dai grammi
-    piecesEl.value = Math.round((num(gramsEl.value, 0) / unitGramsVal) * 10) / 10;
-    // Click sul toggle
-    unitToggle.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-unit-mode]');
-      if (!btn) return;
-      const mode = btn.dataset.unitMode;
-      unitToggle.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x.dataset.unitMode === mode));
-      if (mode === 'pieces') {
-        gramsField.style.display = 'none';
-        piecesField.style.display = '';
-        // Aggiorna pezzi dal valore corrente dei grammi
-        piecesEl.value = Math.round((num(gramsEl.value, 0) / unitGramsVal) * 10) / 10;
-      } else {
-        piecesField.style.display = 'none';
-        gramsField.style.display = '';
-      }
-    });
-    // Quando l'utente modifica i pezzi, aggiorna i grammi internamente e il preview
+  const piecesBar = document.getElementById('pieces-bar');
+  if (piecesEl) {
+    // Aggiornamento valore pezzi → aggiorna #grams (hidden) → trigger update preview
     piecesEl.oninput = () => {
       const pieces = num(piecesEl.value, 0);
-      const g = Math.round(pieces * unitGramsVal);
+      const g = Math.round(pieces * 100); // 1 pezzo = 100g virtuali
       if (g > 0 && g <= 5000) {
         gramsEl.value = g;
         update();
       }
     };
-    // Bottoni preset pezzi (½, 1, 2)
-    const piecesPortionBar = piecesField.querySelector('.portion-bar');
-    if (piecesPortionBar) {
-      piecesPortionBar.addEventListener('click', (e) => {
+    if (piecesBar) {
+      piecesBar.addEventListener('click', (e) => {
         const btn = e.target.closest('button');
         if (!btn) return;
         const op = btn.dataset.piecesOp;
@@ -4685,11 +4662,11 @@ function bindAddFoodSheet() {
         const cur = num(piecesEl.value, 1);
         let next = cur;
         if (op === 'inc') next = Math.round((cur + 1) * 10) / 10;
-        else if (op === 'dec') next = Math.max(0.1, Math.round((cur - 1) * 10) / 10);
+        else if (op === 'dec') next = Math.max(0.5, Math.round((cur - 1) * 10) / 10);
         else if (pieces) next = parseFloat(pieces);
         if (next > 0) {
           piecesEl.value = next;
-          const g = Math.round(next * unitGramsVal);
+          const g = Math.round(next * 100);
           if (g > 0 && g <= 5000) {
             gramsEl.value = g;
             update();
@@ -5467,14 +5444,31 @@ function openDbFoodEditor(food) {
 function openCustomFoodEditor(food) {
   state.editFood = food;
   const f = food || { name: '', brand: '', kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, notes: '', unitName: '', unitGrams: 0 };
+  // Determina la modalità attiva: 'piece' se l'alimento ha un nome unità, altrimenti 'grams'
+  const initialMode = (f.unitName && f.unitName.trim()) ? 'piece' : 'grams';
   const html = `
     <h2 class="sheet-title">${food ? 'Modifica' : 'Nuovo'} alimento</h2>
-    <p class="sheet-sub">Valori nutrizionali per 100g.</p>
+
+    <div class="unit-toggle" id="cf-mode-toggle">
+      <button type="button" data-cf-mode="grams" class="${initialMode === 'grams' ? 'sel' : ''}">Per 100g</button>
+      <button type="button" data-cf-mode="piece" class="${initialMode === 'piece' ? 'sel' : ''}">Per pezzo</button>
+    </div>
+    <p class="sheet-sub" id="cf-mode-desc">${initialMode === 'grams' ? 'Valori nutrizionali per 100 grammi.' : 'Valori nutrizionali di un singolo pezzo.'}</p>
+
     <form id="cf-form">
       <div class="field"><label>Nome</label><input class="input" name="name" value="${esc(f.name)}" required></div>
       <div class="field"><label>Marca (opzionale)</label><input class="input" name="brand" value="${esc(f.brand || '')}"></div>
+
+      <div class="field" id="cf-unit-field" style="${initialMode === 'piece' ? '' : 'display:none'}">
+        <label>Nome pezzo</label>
+        <input class="input" name="unitName" value="${esc(f.unitName || '')}" placeholder="uovo, fetta, tazza, panino...">
+      </div>
+
       <div class="field">
-        <label style="display:flex;align-items:center;justify-content:space-between"><span>Calorie (kcal / 100g)</span><span style="font-size:9.5px;color:var(--text-3);font-weight:500;text-transform:uppercase;letter-spacing:0.06em">Auto · 4·4·9</span></label>
+        <label style="display:flex;align-items:center;justify-content:space-between">
+          <span id="cf-kcal-label">Calorie (kcal / 100g)</span>
+          <span style="font-size:9.5px;color:var(--text-3);font-weight:500;text-transform:uppercase;letter-spacing:0.06em">Auto · 4·4·9</span>
+        </label>
         <input class="input" type="number" step="0.1" min="0" name="kcal" id="cf-kcal" value="${f.kcal}" readonly style="opacity:0.85;cursor:not-allowed">
       </div>
       <div class="row-3">
@@ -5487,15 +5481,8 @@ function openCustomFoodEditor(food) {
         <div class="field"><label>Zucch.</label><input class="input" type="number" step="0.1" min="0" name="sugar" value="${f.sugar}"></div>
         <div class="field"><label>Sodio (mg)</label><input class="input" type="number" step="1" min="0" name="sodium" value="${f.sodium}"></div>
       </div>
-      <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:6px">
-        <div style="font-size:11px;color:var(--text-3);font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">Unità (opzionale)</div>
-        <p style="font-size:12px;color:var(--text-3);margin:0 0 10px;line-height:1.4">Se vuoi contare in pezzi (es. "1 uovo", "1 fetta") invece dei grammi, compila entrambi i campi qui sotto.</p>
-        <div class="row-2">
-          <div class="field"><label>Nome unità</label><input class="input" name="unitName" value="${esc(f.unitName || '')}" placeholder="uovo, fetta, tazza..."></div>
-          <div class="field"><label>Grammi per pezzo</label><input class="input" type="number" step="0.1" min="0" name="unitGrams" value="${f.unitGrams || ''}" placeholder="55"></div>
-        </div>
-      </div>
-      <div class="field" style="margin-top:14px">
+
+      <div class="field">
         <label>Note <span style="color:var(--text-3);font-weight:400;text-transform:none;letter-spacing:0">(opzionale)</span></label>
         <textarea class="input" name="notes" rows="3" placeholder="Es. da Esselunga, ricetta della nonna, allergico al lattosio, ecc." style="resize:vertical;min-height:64px;font-family:inherit;line-height:1.5">${esc(f.notes || '')}</textarea>
       </div>
@@ -5505,6 +5492,34 @@ function openCustomFoodEditor(food) {
   `;
   openSheet(html);
   document.getElementById('cf-back').onclick = () => { state.editFood = null; openCustomFoodsSheet(); };
+
+  // Gestione toggle modalità (Per 100g vs Per pezzo)
+  let currentMode = initialMode;
+  const modeToggle = document.getElementById('cf-mode-toggle');
+  const modeDesc = document.getElementById('cf-mode-desc');
+  const unitField = document.getElementById('cf-unit-field');
+  const unitNameInput = document.querySelector('input[name="unitName"]');
+  const kcalLabel = document.getElementById('cf-kcal-label');
+  const macroLabels = document.querySelectorAll('#cf-form .row-3 label');
+  modeToggle.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-cf-mode]');
+    if (!btn) return;
+    const mode = btn.dataset.cfMode;
+    if (mode === currentMode) return;
+    currentMode = mode;
+    modeToggle.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x.dataset.cfMode === mode));
+    if (mode === 'piece') {
+      modeDesc.textContent = 'Valori nutrizionali di un singolo pezzo.';
+      unitField.style.display = '';
+      if (kcalLabel) kcalLabel.textContent = 'Calorie (kcal / pezzo)';
+    } else {
+      modeDesc.textContent = 'Valori nutrizionali per 100 grammi.';
+      unitField.style.display = 'none';
+      if (kcalLabel) kcalLabel.textContent = 'Calorie (kcal / 100g)';
+      // Pulisci nome unità quando si torna a grammi
+      if (unitNameInput) unitNameInput.value = '';
+    }
+  });
 
   // Auto-calcolo kcal da macros (formula 4·4·9)
   const cfKcalInput = document.getElementById('cf-kcal');
@@ -5525,6 +5540,12 @@ function openCustomFoodEditor(food) {
     e.preventDefault();
     recalcCfKcal();
     const fd = new FormData(e.target);
+    const isPieceMode = currentMode === 'piece';
+    const unitName = (fd.get('unitName') || '').trim();
+    if (isPieceMode && !unitName) {
+      toast('Inserisci il nome del pezzo (es. "uovo")');
+      return;
+    }
     const payload = {
       id: food ? food.id : null,
       name: (fd.get('name') || '').trim(),
@@ -5537,15 +5558,13 @@ function openCustomFoodEditor(food) {
       sugar: num(fd.get('sugar')),
       sodium: num(fd.get('sodium')),
       notes: (fd.get('notes') || '').trim(),
-      unitName: (fd.get('unitName') || '').trim(),
-      unitGrams: num(fd.get('unitGrams')),
+      // Modalità pezzo: i macro sono PER PEZZO, salviamo unitName e impostiamo
+      // unitGrams = 100 in modo che internamente "1 pezzo" = 100g virtuali e i calcoli
+      // continuino a funzionare con la stessa logica (kcal * factor / 100).
+      unitName: isPieceMode ? unitName : '',
+      unitGrams: isPieceMode ? 100 : 0,
     };
     if (!payload.name) { toast('Nome obbligatorio'); return; }
-    // L'unità ha senso solo se entrambi i campi sono compilati
-    if (!payload.unitName || payload.unitGrams <= 0) {
-      payload.unitName = '';
-      payload.unitGrams = 0;
-    }
     await saveCustomFood(payload);
     await loadCustomFoods();
     toast(food ? 'Alimento aggiornato' : 'Alimento creato');
@@ -6047,7 +6066,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.28.0';
+const APP_VERSION = '1.28.1';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
