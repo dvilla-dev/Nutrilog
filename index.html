@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.31.0 -->
+<!-- NUTRILOG_VERSION: 1.33.0 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -219,23 +219,23 @@
   .card {
     background: var(--surface);
     border-radius: var(--r-card);
-    padding: 24px var(--pad-lg);
-    margin: 0 var(--pad-lg) 14px;
+    padding: 16px var(--pad-lg);
+    margin: 0 var(--pad-lg) 8px;
     border: 1px solid var(--border);
   }
   .card-flat {
     background: var(--surface);
     border-radius: var(--r-card);
-    padding: 24px var(--pad-lg);
+    padding: 18px var(--pad-lg);
     border: 1px solid var(--border);
   }
   .section-title {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--text-3);
-    padding: 22px var(--pad-lg) 12px;
+    padding: 10px var(--pad-lg) 6px;
     margin: 0;
   }
 
@@ -247,8 +247,8 @@
     align-items: center;
     justify-content: center;
     position: relative;
-    margin: 8px auto 24px;
-    width: 240px; height: 240px;
+    margin: 0 auto 12px;
+    width: 200px; height: 200px;
   }
   .ring-wrap svg { transform: rotate(-90deg); overflow: visible; }
   .ring-bg { stroke: var(--surface-3); }
@@ -291,17 +291,17 @@
   .ring-sub {
     display: flex;
     justify-content: space-around;
-    padding-top: 8px;
+    padding-top: 4px;
     text-align: center;
   }
   .ring-sub > div { flex: 1; }
   .ring-sub .n {
-    font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
+    font-size: 18px; font-weight: 600; letter-spacing: -0.02em;
   }
   .ring-sub .l {
-    font-size: 10.5px; color: var(--text-2);
+    font-size: 9.5px; color: var(--text-2);
     text-transform: uppercase; letter-spacing: 0.1em;
-    margin-top: 4px;
+    margin-top: 3px;
     font-weight: 500;
   }
 
@@ -354,7 +354,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px var(--pad-lg) 14px;
+    padding: 2px var(--pad-lg) 8px;
     gap: 8px;
   }
   /* Dash top: datenav + config button */
@@ -499,6 +499,67 @@
     accent-color: var(--accent);
     cursor: pointer;
   }
+  /* Sezione titoli in sheet personalizza */
+  .cfg-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    padding: 4px 4px 8px;
+    margin-top: 4px;
+  }
+  /* Rows per configurazione pasti */
+  .meal-cfg-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--surface-2);
+    border-radius: var(--r-btn);
+    border: 1px solid var(--border);
+    transition: opacity var(--dur) var(--ease);
+  }
+  .meal-cfg-row.dragging { opacity: 0.4; }
+  .meal-cfg-drag {
+    color: var(--text-3);
+    font-size: 14px;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    padding: 0 2px;
+    letter-spacing: -2px;
+  }
+  .meal-cfg-name {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 6px 0;
+    outline: none;
+  }
+  .meal-cfg-name:focus {
+    background: var(--surface);
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .meal-cfg-vis, .meal-cfg-del {
+    background: transparent;
+    border: none;
+    color: var(--text-3);
+    font-size: 16px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+  }
+  .meal-cfg-vis:active, .meal-cfg-del:active {
+    background: var(--surface);
+    color: var(--accent);
+  }
+  .meal-cfg-del svg { width: 16px; height: 16px; }
   .datenav button {
     width: 36px; height: 36px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -1690,7 +1751,15 @@ function shiftDate(iso, days) {
   return todayISO(dt);
 }
 function emptyDiary() {
-  return { breakfast: [], lunch: [], dinner: [], snack: [] };
+  // Crea un diario vuoto con tutte le chiavi pasto visibili (default + custom)
+  const out = { breakfast: [], lunch: [], dinner: [], snack: [] };
+  try {
+    const meals = getMealsCfg();
+    for (const m of meals) {
+      if (!out[m.id]) out[m.id] = [];
+    }
+  } catch (_) {}
+  return out;
 }
 function defaultGoals() {
   // Valori a zero: l'utente li imposta personalmente la prima volta dal Profilo.
@@ -2810,8 +2879,11 @@ async function copyMealFromDate(fromDate, meal, mode = 'append') {
 
 function computeTotals() {
   const totals = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 };
-  for (const meal of ['breakfast', 'lunch', 'dinner', 'snack']) {
-    for (const e of (state.diary[meal] || [])) {
+  // Itera su TUTTI i pasti presenti nel diario (inclusi quelli custom)
+  for (const meal of Object.keys(state.diary || {})) {
+    const items = state.diary[meal];
+    if (!Array.isArray(items)) continue;
+    for (const e of items) {
       const f = e.grams / 100;
       totals.kcal    += e.kcal    * f;
       totals.protein += e.protein * f;
@@ -4065,6 +4137,7 @@ const DASH_CFG_KEY = 'nutrilog::dashboard-cfg';
 const DASH_DEFAULT = {
   show: { kcal: true, macro: true, micro: false, week: false },
   heights: {}, // es. { kcal: 320, macro: 180 } - opzionale, default = auto
+  resizeLocked: true, // di default le maniglie sono BLOCCATE per evitare modifiche accidentali durante lo scroll
 };
 function getDashboardCfg() {
   try {
@@ -4074,6 +4147,7 @@ function getDashboardCfg() {
     return {
       show: { ...DASH_DEFAULT.show, ...(parsed.show || {}) },
       heights: parsed.heights || {},
+      resizeLocked: parsed.resizeLocked !== undefined ? parsed.resizeLocked : true,
     };
   } catch (_) {
     return { ...DASH_DEFAULT, show: { ...DASH_DEFAULT.show }, heights: {} };
@@ -4081,6 +4155,35 @@ function getDashboardCfg() {
 }
 function setDashboardCfg(cfg) {
   try { localStorage.setItem(DASH_CFG_KEY, JSON.stringify(cfg)); } catch (_) {}
+}
+
+/* ─── PASTI CUSTOMIZZABILI ────────────────────────────────
+   L'utente può aggiungere, rinominare, riordinare, nascondere pasti.
+   I 4 default sono: breakfast, lunch, dinner, snack.
+   Quelli aggiunti hanno id custom (es. "m-abc123").
+   Salvati in localStorage (NON nel cloud per ora — sono preferenze UI).
+   ──────────────────────────────────────────────────────── */
+const MEALS_CFG_KEY = 'nutrilog::meals-cfg';
+const MEALS_DEFAULT = [
+  { id: 'breakfast', name: 'Colazione', visible: true },
+  { id: 'lunch',     name: 'Pranzo',    visible: true },
+  { id: 'dinner',    name: 'Cena',      visible: true },
+  { id: 'snack',     name: 'Spuntino',  visible: true },
+];
+function getMealsCfg() {
+  try {
+    const raw = localStorage.getItem(MEALS_CFG_KEY);
+    if (!raw) return MEALS_DEFAULT.map(m => ({...m}));
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return MEALS_DEFAULT.map(m => ({...m}));
+    return parsed;
+  } catch (_) { return MEALS_DEFAULT.map(m => ({...m})); }
+}
+function setMealsCfg(meals) {
+  try { localStorage.setItem(MEALS_CFG_KEY, JSON.stringify(meals)); } catch (_) {}
+}
+function visibleMeals() {
+  return getMealsCfg().filter(m => m.visible !== false);
 }
 
 function renderToday() {
@@ -4117,7 +4220,7 @@ function renderToday() {
     const h = dCfg.heights[cardId];
     return h ? `style="min-height:${h}px"` : '';
   };
-  const resizeHandle = (cardId) => `<div class="card-resize-handle" data-resize-card="${cardId}" aria-label="Trascina per ridimensionare"><div class="card-resize-grip"></div></div>`;
+  const resizeHandle = (cardId) => dCfg.resizeLocked ? '' : `<div class="card-resize-handle" data-resize-card="${cardId}" aria-label="Trascina per ridimensionare"><div class="card-resize-grip"></div></div>`;
 
   return `
     <div class="dash-top">
@@ -4167,7 +4270,7 @@ function renderToday() {
 
     ${dCfg.show.micro ? `
       <h3 class="section-title">Micronutrienti</h3>
-      <div class="card card-resizable" data-card-id="micro" ${heightStyle('micro')} style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:20px;position:relative">
+      <div class="card card-resizable" data-card-id="micro" ${heightStyle('micro')} style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px;position:relative">
         ${micro('Fibre', t.fiber, g.fiber, 'g')}
         ${micro('Zuccheri', t.sugar, g.sugar, 'g')}
         ${micro('Saturi', t.sodium, g.sodium, 'g')}
@@ -4184,10 +4287,7 @@ function renderToday() {
     ` : ''}
 
     <h3 class="section-title">Pasti</h3>
-    ${renderMeal('breakfast', 'Colazione')}
-    ${renderMeal('lunch', 'Pranzo')}
-    ${renderMeal('dinner', 'Cena')}
-    ${renderMeal('snack', 'Spuntino')}
+    ${visibleMeals().map(m => renderMeal(m.id, m.name)).join('')}
 
     <button class="fab" id="fab-add" aria-label="Aggiungi rapidamente">${I.plus}</button>
   `;
@@ -6394,7 +6494,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.31.0';
+const APP_VERSION = '1.33.0';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -6960,6 +7060,7 @@ async function openCloudAppsSheet() {
 
 function openDashCfgSheet() {
   const cfg = getDashboardCfg();
+  const meals = getMealsCfg();
   const cards = [
     { id: 'kcal', label: 'Anello calorie', desc: 'Anello principale con kcal e progresso', alwaysOn: false },
     { id: 'macro', label: 'Macronutrienti', desc: 'Proteine, Carboidrati, Grassi' },
@@ -6967,8 +7068,9 @@ function openDashCfgSheet() {
     { id: 'week', label: 'Riepilogo settimana', desc: 'Lun-Dom con kcal di ogni giorno' },
   ];
   const html = `
-    <h2 class="sheet-title">Personalizza dashboard</h2>
-    <p class="sheet-sub">Scegli quali card mostrare nella schermata Oggi. Trascina la maniglia in basso a ogni card per ridimensionarla.</p>
+    <h2 class="sheet-title">Personalizza</h2>
+
+    <div class="cfg-section-title">Card dashboard</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
       ${cards.map(c => `
         <label class="dash-toggle-row">
@@ -6980,11 +7082,35 @@ function openDashCfgSheet() {
         </label>
       `).join('')}
     </div>
+
+    <div class="cfg-section-title">Pasti</div>
+    <p class="dash-toggle-desc" style="padding:0 4px;margin-bottom:10px">Trascina ⋮⋮ per riordinare. Tap nome per modificare. Tap occhio per nascondere/mostrare.</p>
+    <div id="meals-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
+      ${meals.map((m, idx) => `
+        <div class="meal-cfg-row" data-meal-id="${esc(m.id)}" draggable="true">
+          <div class="meal-cfg-drag" aria-label="Trascina">⋮⋮</div>
+          <input type="text" class="meal-cfg-name" data-meal-name="${esc(m.id)}" value="${esc(m.name)}">
+          <button class="meal-cfg-vis" data-meal-vis="${esc(m.id)}" aria-label="${m.visible ? 'Nascondi' : 'Mostra'}">${m.visible ? '👁' : '⊘'}</button>
+          ${MEALS_DEFAULT.find(d => d.id === m.id) ? '' : `<button class="meal-cfg-del" data-meal-del="${esc(m.id)}" aria-label="Elimina">${I.trash}</button>`}
+        </div>
+      `).join('')}
+    </div>
+    <button class="btn btn-ghost" id="add-meal-btn" type="button" style="margin-bottom:18px">+ Aggiungi pasto</button>
+
+    <div class="cfg-section-title">Altro</div>
+    <label class="dash-toggle-row" style="margin-bottom:10px">
+      <div style="flex:1">
+        <div class="dash-toggle-label">${cfg.resizeLocked ? '🔒' : '🔓'} ${cfg.resizeLocked ? 'Sblocca' : 'Blocca'} ridimensionamento</div>
+        <div class="dash-toggle-desc">${cfg.resizeLocked ? 'Maniglie nascoste, niente modifiche accidentali.' : 'Maniglie visibili, puoi ridimensionare le card.'}</div>
+      </div>
+      <input type="checkbox" id="dash-lock-toggle" ${cfg.resizeLocked ? '' : 'checked'}>
+    </label>
     <button class="btn btn-ghost" id="dash-reset-heights" type="button">Reset altezze card</button>
     <button class="btn btn-primary" id="dash-cfg-close" type="button" style="margin-top:6px">Fatto</button>
   `;
   openSheet(html);
-  // Toggle handlers
+
+  // Card toggle
   document.querySelectorAll('[data-dash-toggle]').forEach(cb => {
     cb.addEventListener('change', () => {
       const cur = getDashboardCfg();
@@ -6992,12 +7118,116 @@ function openDashCfgSheet() {
       setDashboardCfg(cur);
     });
   });
+
+  // Meal name rename (su blur)
+  document.querySelectorAll('[data-meal-name]').forEach(inp => {
+    inp.addEventListener('blur', () => {
+      const id = inp.dataset.mealName;
+      const newName = (inp.value || '').trim();
+      if (!newName) { inp.value = (getMealsCfg().find(m => m.id === id) || {}).name || ''; return; }
+      const ms = getMealsCfg();
+      const idx = ms.findIndex(m => m.id === id);
+      if (idx >= 0) {
+        ms[idx].name = newName;
+        setMealsCfg(ms);
+      }
+    });
+  });
+
+  // Visibility toggle
+  document.querySelectorAll('[data-meal-vis]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.mealVis;
+      const ms = getMealsCfg();
+      const idx = ms.findIndex(m => m.id === id);
+      if (idx >= 0) {
+        ms[idx].visible = !(ms[idx].visible !== false);
+        setMealsCfg(ms);
+        openDashCfgSheet();
+      }
+    });
+  });
+
+  // Delete custom meal
+  document.querySelectorAll('[data-meal-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.mealDel;
+      if (!confirm('Eliminare questo pasto?\n\nLe voci di diario già aggiunte qui non verranno cancellate, ma il pasto non sarà più visibile e modificabile.')) return;
+      const ms = getMealsCfg().filter(m => m.id !== id);
+      setMealsCfg(ms);
+      openDashCfgSheet();
+    });
+  });
+
+  // Add meal
+  document.getElementById('add-meal-btn').onclick = () => {
+    const name = prompt('Nome del nuovo pasto:', '');
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    if (trimmed.length > 30) { toast('Nome troppo lungo (max 30 caratteri)'); return; }
+    const ms = getMealsCfg();
+    if (ms.some(m => m.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast('Esiste già un pasto con questo nome');
+      return;
+    }
+    const newId = 'm-' + uid();
+    ms.push({ id: newId, name: trimmed, visible: true });
+    setMealsCfg(ms);
+    openDashCfgSheet();
+  };
+
+  // Drag-to-reorder
+  const mealsList = document.getElementById('meals-list');
+  let draggedId = null;
+  if (mealsList) {
+    mealsList.querySelectorAll('.meal-cfg-row').forEach(row => {
+      row.addEventListener('dragstart', (e) => {
+        draggedId = row.dataset.mealId;
+        row.classList.add('dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('text/plain', draggedId); } catch (_) {}
+        }
+      });
+      row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+        draggedId = null;
+      });
+      row.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      });
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const targetId = row.dataset.mealId;
+        if (!draggedId || draggedId === targetId) return;
+        const ms = getMealsCfg();
+        const fromIdx = ms.findIndex(m => m.id === draggedId);
+        const toIdx = ms.findIndex(m => m.id === targetId);
+        if (fromIdx < 0 || toIdx < 0) return;
+        const [moved] = ms.splice(fromIdx, 1);
+        ms.splice(toIdx, 0, moved);
+        setMealsCfg(ms);
+        openDashCfgSheet();
+      });
+    });
+  }
+
   document.getElementById('dash-reset-heights').onclick = () => {
     const cur = getDashboardCfg();
     cur.heights = {};
     setDashboardCfg(cur);
     toast('Altezze ripristinate');
   };
+  const lockToggle = document.getElementById('dash-lock-toggle');
+  if (lockToggle) {
+    lockToggle.addEventListener('change', () => {
+      const cur = getDashboardCfg();
+      cur.resizeLocked = !lockToggle.checked;
+      setDashboardCfg(cur);
+      openDashCfgSheet();
+    });
+  }
   document.getElementById('dash-cfg-close').onclick = () => {
     closeSheet();
     render();
