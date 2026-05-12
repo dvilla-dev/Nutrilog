@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.30.0 -->
+<!-- NUTRILOG_VERSION: 1.31.0 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -257,6 +257,18 @@
     transition: stroke-dashoffset 600ms var(--ease);
     filter: drop-shadow(0 0 8px rgba(198, 255, 0, 0.25));
   }
+  /* SFORAMENTO KCAL: anello rosso/arancione + testi rossi */
+  .kcal-over .ring-fg {
+    stroke: var(--danger);
+    filter: drop-shadow(0 0 10px rgba(255, 80, 80, 0.45));
+  }
+  .ring-over {
+    color: var(--danger);
+    font-weight: 600;
+  }
+  .ring-sub .n.over {
+    color: var(--danger);
+  }
   .ring-center {
     position: absolute;
     text-align: center;
@@ -372,6 +384,64 @@
   .card-resizable {
     position: relative;
     transition: min-height var(--dur) var(--ease);
+    --card-scale: 1;
+    overflow: hidden;
+  }
+  .card-resizable.resizing {
+    transition: none;
+  }
+  .card-resizable.resizing * {
+    transition: none !important;
+  }
+  /* Quando la card ha una scala personalizzata, scaliamo i contenuti
+     proporzionalmente. Usiamo calc() su tutte le dimensioni interne. */
+  .card-resizable[data-card-id="kcal"] .ring-wrap {
+    width: calc(200px * var(--card-scale)) !important;
+    height: calc(200px * var(--card-scale)) !important;
+    margin: calc(4px * var(--card-scale)) auto calc(12px * var(--card-scale)) !important;
+  }
+  .card-resizable[data-card-id="kcal"] .ring-wrap svg {
+    width: calc(200px * var(--card-scale)) !important;
+    height: calc(200px * var(--card-scale)) !important;
+  }
+  .card-resizable[data-card-id="kcal"] .ring-value {
+    font-size: calc(44px * var(--card-scale));
+  }
+  .card-resizable[data-card-id="kcal"] .ring-label {
+    font-size: calc(10.5px * var(--card-scale));
+    margin-top: calc(6px * var(--card-scale));
+  }
+  .card-resizable[data-card-id="kcal"] .ring-sub .n {
+    font-size: calc(15px * var(--card-scale));
+  }
+  .card-resizable[data-card-id="kcal"] .ring-sub .l {
+    font-size: calc(10px * var(--card-scale));
+  }
+  .card-resizable[data-card-id="macro"] .macro-row {
+    padding: calc(10px * var(--card-scale)) 0;
+  }
+  .card-resizable[data-card-id="macro"] .macro-label {
+    font-size: calc(12px * var(--card-scale));
+    min-width: calc(84px * var(--card-scale));
+  }
+  .card-resizable[data-card-id="macro"] .macro-bar {
+    height: calc(6px * var(--card-scale));
+  }
+  .card-resizable[data-card-id="macro"] .macro-value {
+    font-size: calc(13px * var(--card-scale));
+  }
+  .card-resizable[data-card-id="micro"] > div > div:first-child {
+    font-size: calc(16px * var(--card-scale)) !important;
+  }
+  .card-resizable[data-card-id="micro"] > div > div:last-child {
+    font-size: calc(10.5px * var(--card-scale)) !important;
+  }
+  .card-resizable[data-card-id="week"] {
+    font-size: calc(13px * var(--card-scale));
+  }
+  /* Padding generale della card scala con il contenuto */
+  .card-resizable {
+    padding: calc(var(--pad-lg) * var(--card-scale));
   }
   .card-resize-handle {
     position: absolute;
@@ -4020,7 +4090,11 @@ function renderToday() {
   const pct = goalsConfigured ? clamp(t.kcal / g.calories, 0, 1.2) : 0;
   const R = 84, C = 2 * Math.PI * R;
   const off = C * (1 - Math.min(pct, 1));
-  const remaining = goalsConfigured ? Math.max(0, g.calories - t.kcal) : 0;
+  // Sforamento kcal: se positivo l'utente ha ancora calorie, se negativo le ha sforate
+  const isOver = goalsConfigured && t.kcal > g.calories;
+  const remainingRaw = goalsConfigured ? (g.calories - t.kcal) : 0; // può essere negativo
+  const remaining = Math.max(0, remainingRaw); // per le label "rimaste"
+  const overAmount = isOver ? Math.round(t.kcal - g.calories) : 0;
   const pDate = prettyDate(state.date);
   const dCfg = getDashboardCfg();
 
@@ -4056,7 +4130,7 @@ function renderToday() {
     </div>
 
     ${dCfg.show.kcal ? `
-      <div class="card card-resizable" data-card-id="kcal" ${heightStyle('kcal')}>
+      <div class="card card-resizable ${isOver ? 'kcal-over' : ''}" data-card-id="kcal" ${heightStyle('kcal')}>
         <div class="ring-wrap">
           <svg width="200" height="200" viewBox="0 0 200 200">
             <circle class="ring-bg" cx="100" cy="100" r="${R}" fill="none" stroke-width="14"/>
@@ -4067,13 +4141,15 @@ function renderToday() {
           </svg>
           <div class="ring-center">
             <div class="ring-value">${round(t.kcal)}</div>
-            <div class="ring-label">${round(remaining)} kcal rimaste</div>
+            <div class="ring-label">${isOver
+              ? `<span class="ring-over">−${overAmount} kcal sforate</span>`
+              : `${round(remaining)} kcal rimaste`}</div>
           </div>
         </div>
         <div class="ring-sub">
           <div><div class="n">${round(t.kcal)}</div><div class="l">Assunte</div></div>
           <div><div class="n">${round(g.calories)}</div><div class="l">Obiettivo</div></div>
-          <div><div class="n">${round(remaining)}</div><div class="l">Rimaste</div></div>
+          <div><div class="n ${isOver ? 'over' : ''}">${isOver ? '−' + overAmount : round(remaining)}</div><div class="l">${isOver ? 'Sforate' : 'Rimaste'}</div></div>
         </div>
         ${resizeHandle('kcal')}
       </div>
@@ -6318,7 +6394,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.30.0';
+const APP_VERSION = '1.31.0';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -8286,13 +8362,25 @@ function bindApp() {
   if (dashCfgBtn) dashCfgBtn.onclick = () => openDashCfgSheet();
 
   // Resize maniglie sulle card della dashboard
+  // Altezze "naturali" di riferimento per calcolare lo zoom proporzionale dei contenuti
+  const CARD_BASE_HEIGHT = { kcal: 340, macro: 180, micro: 130, week: 180 };
   document.querySelectorAll('[data-resize-card]').forEach(handle => {
     const card = handle.parentElement;
     if (!card) return;
     const cardId = handle.dataset.resizeCard;
+    const baseH = CARD_BASE_HEIGHT[cardId] || 200;
     let startY = 0;
     let startH = 0;
     let dragging = false;
+
+    // Applica una scala proporzionale ai contenuti della card
+    const applyScale = (height) => {
+      const scale = Math.max(0.3, Math.min(2.5, height / baseH));
+      card.style.setProperty('--card-scale', scale);
+    };
+    // Applica scala iniziale (da altezza salvata)
+    const initialH = card.getBoundingClientRect().height;
+    applyScale(initialH);
 
     const onDown = (clientY) => {
       startY = clientY;
@@ -8304,8 +8392,11 @@ function bindApp() {
     const onMove = (clientY) => {
       if (!dragging) return;
       const delta = clientY - startY;
-      const newH = Math.max(100, Math.min(800, startH + delta));
+      // Limiti più larghi: 50px (super-compatto) – 800px
+      const newH = Math.max(50, Math.min(800, startH + delta));
       card.style.minHeight = newH + 'px';
+      card.style.height = newH + 'px';
+      applyScale(newH);
     };
     const onUp = () => {
       if (!dragging) return;
