@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.28.1 -->
+<!-- NUTRILOG_VERSION: 1.28.4 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -133,6 +133,27 @@
     justify-content: space-between;
     gap: 12px;
   }
+  .header.header-with-back {
+    justify-content: flex-start;
+    gap: 14px;
+  }
+  .header-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-2);
+    font-size: 14px;
+    font-weight: 500;
+    background: transparent;
+    border: none;
+    padding: 6px 8px;
+    margin-left: -8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+  }
+  .header-back-btn:active { background: var(--surface-2); transform: scale(0.98); }
+  .header-back-btn svg { width: 18px; height: 18px; }
   .header h1 {
     font-size: 13px;
     font-weight: 600;
@@ -877,6 +898,9 @@
     padding: 12px var(--pad-lg) calc(20px + var(--safe-bot));
     max-height: 92vh;
     overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     animation: slideUp 260ms var(--ease);
     border-top: 1px solid var(--border);
   }
@@ -1470,6 +1494,7 @@ const state = {
   searchError: '',
   mostUsedFoods: [], // Top alimenti più usati (calcolato all'avvio della tab Cerca)
   aiSearchPending: null, // query attualmente in ricerca AI, null se nessuna
+  searchOriginTab: null, // tab da cui si è arrivati a search (per back button)
   targetMeal: 'breakfast',  // pasto di destinazione predefinito
   addFood: null,        // { food, meal } when choosing grams
   editFood: null,       // custom food being edited
@@ -3829,12 +3854,22 @@ function renderAppShell() {
   let header = '';
   let tabbar = renderTabbar();
   if (state.tab === 'today')   { header = renderHeader('Diario'); content = renderToday(); }
-  if (state.tab === 'search')  { header = renderHeader('Cerca alimenti'); content = renderSearch(); }
+  if (state.tab === 'search')  {
+    const hasBack = !!state.searchOriginTab;
+    header = renderHeader('Cerca alimenti', hasBack);
+    content = renderSearch();
+  }
   if (state.tab === 'photo')   { header = renderHeader('Foto AI'); content = renderPhotoTab(); }
   if (state.tab === 'profile') { header = renderHeader('Profilo'); content = renderProfile(); }
   return `${header}<div class="screen" id="screen">${content}</div>${tabbar}`;
 }
-function renderHeader(title) {
+function renderHeader(title, withBack = false) {
+  if (withBack) {
+    return `<div class="header header-with-back">
+      <button class="header-back-btn" id="header-back">${I.left}<span>Indietro</span></button>
+      <h1>${esc(title)}</h1>
+    </div>`;
+  }
   return `<div class="header"><h1>${esc(title)}</h1></div>`;
 }
 function renderTabbar() {
@@ -4096,6 +4131,8 @@ function renderSearch() {
   `;
 }
 
+// Contatore di richieste per evitare che una vecchia ricerca AI sovrascriva una nuova
+let _searchGen = 0;
 const doSearch = debounce(async (q) => {
   if (!q || q.length < 2) {
     state.searchState = 'idle';
@@ -4107,36 +4144,60 @@ const doSearch = debounce(async (q) => {
     return;
   }
   state.searchQuery = q;
-  state.searchState = 'loading';
+  const myGen = ++_searchGen;
   state.searchError = '';
-  updateSearchResults();
-  try {
-    // 1) Cerca tra "I miei alimenti" (custom)
-    const customMatches = searchCustomFoods(q);
-    // 2) Cerca tra "Pasti salvati" (templates)
-    const tplMatches = searchTemplates(q);
-    // 3) Cerca nel DB locale + AI fallback (searchOFF gestisce entrambi)
-    const offResults = await searchOFF(q);
 
-    // Dedup: se un custom ha lo stesso nome di un built-in, mostra solo il custom
-    const customKeys = new Set(customMatches.map(c => stripAccents((c.name || '').toLowerCase())));
-    const dbFiltered = offResults.filter(f => !customKeys.has(stripAccents((f.name || '').toLowerCase())));
-    const combined = [...customMatches, ...dbFiltered];
+  // ── FASE 1 — Mostra subito i risultati locali (sincroni, istantanei)
+  const customMatches = searchCustomFoods(q);
+  const tplMatches = searchTemplates(q);
+  const localDb = searchLocal(q);
 
-    if (combined.length === 0 && tplMatches.length === 0) state.searchState = 'empty';
-    else state.searchState = 'results';
-    state.searchResults = combined;
-    state.searchTemplateResults = tplMatches;
-    updateSearchResults();
-  } catch (e) {
-    state.searchState = 'error';
-    state.searchError = (e && e.message) ? e.message : String(e);
+  const customKeys = new Set(customMatches.map(c => stripAccents((c.name || '').toLowerCase())));
+  const dbFiltered = localDb.filter(f => !customKeys.has(stripAccents((f.name || '').toLowerCase())));
+  const phase1 = [...customMatches, ...dbFiltered];
+
+  if (phase1.length === 0 && tplMatches.length === 0) {
+    // Nessun risultato locale: mostra loading mentre cerchiamo con AI
+    state.searchState = 'loading';
     state.searchResults = [];
     state.searchTemplateResults = [];
-    dlog('search error: ' + ((e && e.message) ? e.message : String(e)));
-    updateSearchResults();
+  } else {
+    // Mostriamo subito i risultati locali
+    state.searchState = 'results';
+    state.searchResults = phase1;
+    state.searchTemplateResults = tplMatches;
   }
-}, 300);
+  updateSearchResults();
+
+  // ── FASE 2 — Prova AI fallback in background SOLO se servono più risultati
+  // (meno di 5 risultati DB locali). Se la ricerca corrente cambia nel
+  // frattempo, scarta i risultati AI.
+  if (localDb.length < 5) {
+    try {
+      const ai = await aiSearchFoods(q);
+      if (myGen !== _searchGen) return; // query cambiata, scarta
+      const seen = new Set(phase1.map(f => stripAccents((f.name || '').toLowerCase())));
+      const extras = ai.filter(f => !seen.has(stripAccents((f.name || '').toLowerCase())));
+      if (extras.length > 0) {
+        state.searchResults = [...phase1, ...extras];
+        state.searchState = 'results';
+        updateSearchResults();
+      } else if (phase1.length === 0 && tplMatches.length === 0) {
+        // Nessun risultato anche da AI
+        state.searchState = 'empty';
+        updateSearchResults();
+      }
+    } catch (e) {
+      if (myGen !== _searchGen) return;
+      // AI fallita: se non c'erano risultati locali, mostra empty
+      if (phase1.length === 0 && tplMatches.length === 0) {
+        state.searchState = 'empty';
+        updateSearchResults();
+      }
+      dlog('AI fallback failed: ' + ((e && e.message) ? e.message : String(e)));
+    }
+  }
+}, 150);
 
 function updateSearchResults() {
   const el = document.getElementById('search-results');
@@ -4423,23 +4484,25 @@ function openSheet(html) {
   });
 
   // Edge-swipe da sinistra a destra per chiudere (come iOS back).
-  // Si attiva solo se il dito parte dai primi 30px dal bordo sinistro,
-  // per non interferire con lo scroll della lista interna.
+  // Si attiva solo se il dito parte dai primi 24px dal bordo sinistro,
+  // e SOLO dopo che il movimento orizzontale supera nettamente quello verticale.
   let edgeStartX = 0;
   let edgeStartY = 0;
   let edgeCurrentX = 0;
   let edgeCurrentY = 0;
   let edgeDragging = false;
+  let edgeActivated = false; // diventa true solo dopo aver confermato che è swipe orizzontale
   sheet.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1) return;
     const t = e.touches[0];
-    if (t.clientX > 30) return; // solo dal bordo sinistro
+    if (t.clientX > 24) return; // solo dal bordo sinistro
     edgeStartX = t.clientX;
     edgeStartY = t.clientY;
     edgeCurrentX = edgeStartX;
     edgeCurrentY = edgeStartY;
     edgeDragging = true;
-    sheet.style.transition = 'none';
+    edgeActivated = false;
+    // NON settiamo transition:none qui — aspettiamo che l'edge swipe sia confermato
   }, { passive: true });
   sheet.addEventListener('touchmove', (e) => {
     if (!edgeDragging) return;
@@ -4447,18 +4510,24 @@ function openSheet(html) {
     edgeCurrentY = e.touches[0].clientY;
     const dx = edgeCurrentX - edgeStartX;
     const dy = Math.abs(edgeCurrentY - edgeStartY);
-    // Se il movimento è prevalentemente verticale, abbandona (è uno scroll)
-    if (dy > Math.abs(dx) + 10) {
-      edgeDragging = false;
-      sheet.style.transform = '';
-      sheet.style.transition = '';
-      return;
+    if (!edgeActivated) {
+      // Aspetta che ci sia chiarezza sulla direzione (>12px in qualche direzione)
+      if (Math.abs(dx) < 12 && dy < 12) return;
+      if (dy > Math.abs(dx) - 4) {
+        // Movimento verticale o ambiguo: abbandona, lascia lo scroll naturale
+        edgeDragging = false;
+        return;
+      }
+      edgeActivated = true;
+      sheet.style.transition = 'none';
     }
     if (dx > 0) sheet.style.transform = `translateX(${dx}px)`;
   }, { passive: true });
   sheet.addEventListener('touchend', () => {
     if (!edgeDragging) return;
     edgeDragging = false;
+    if (!edgeActivated) return;
+    edgeActivated = false;
     const dx = edgeCurrentX - edgeStartX;
     sheet.style.transition = '';
     if (dx > 80) {
@@ -4480,7 +4549,14 @@ function closeSheet() {
 async function openAddFood(food, defaultMeal = 'breakfast') {
   // Recupera l'ultima quantità usata per questo alimento (default 100g)
   const rememberedGrams = await getRememberedGrams(food, 100);
-  state.addFood = { food, meal: defaultMeal, grams: rememberedGrams, unitMode: false };
+  state.addFood = {
+    food,
+    meal: defaultMeal,
+    grams: rememberedGrams,
+    unitMode: false,
+    // Quando si conferma, invece di chiudere tutto, ritorniamo qui (sheet padre)
+    returnTo: state.addFood && state.addFood.returnTo ? state.addFood.returnTo : null,
+  };
   const f = food;
   const initialGrams = rememberedGrams;
   const factor = initialGrams / 100;
@@ -4679,9 +4755,35 @@ function bindAddFoodSheet() {
   document.getElementById('add-confirm').onclick = async () => {
     const g = num(gramsEl.value, 0);
     if (g <= 0) { toast('Inserisci una quantità valida'); return; }
-    await addFoodToDiary(state.addFood.meal, state.addFood.food, g);
-    closeSheet();
+    const meal = state.addFood.meal;
+    const returnTo = state.addFood.returnTo;
+    await addFoodToDiary(meal, state.addFood.food, g);
     toast('Aggiunto al diario');
+    // Se c'è un "ritorno" specifico, riapri quello sheet (resto sullo stesso menu)
+    if (returnTo && returnTo.type === 'customPicker') {
+      state.addFood = null;
+      openCustomPicker(returnTo.meal);
+      return;
+    }
+    if (returnTo && returnTo.type === 'search') {
+      state.addFood = null;
+      closeSheet();
+      // Resta sulla tab search, ripulisce solo il campo
+      const q = document.getElementById('q');
+      if (q) { q.value = ''; q.focus(); }
+      state.searchQuery = '';
+      state.searchResults = [];
+      state.searchState = 'idle';
+      render();
+      return;
+    }
+    if (returnTo && returnTo.type === 'templates') {
+      state.addFood = null;
+      openTemplatesSheet(returnTo.meal);
+      return;
+    }
+    // Fallback comportamento precedente: chiudi e vai a today
+    closeSheet();
     if (state.tab !== 'today') { state.tab = 'today'; }
     render();
   };
@@ -5122,17 +5224,20 @@ function openCustomFoodsSheet(filter = '') {
         ? `<div class="subtle-list-empty">Nessun alimento salvato</div>`
         : list.length === 0
           ? `<div class="subtle-list-empty">Nessun risultato</div>`
-          : list.slice(0, 100).map(f => `
+          : list.slice(0, 100).map(f => {
+            const kcalSuffix = f.unitName ? `kcal/${f.unitName}` : 'kcal/100g';
+            return `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px solid var(--border)">
               <div style="flex:1;min-width:0">
                 <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}${f.notes ? ` <span style="color:var(--accent);font-size:11px" title="${esc(f.notes)}">●</span>` : ''}</div>
-                <div style="font-size:12px;color:var(--text-2);margin-top:2px">${esc(f.brand || 'Senza marca')} · ${round(f.kcal)} kcal/100g</div>
+                <div style="font-size:12px;color:var(--text-2);margin-top:2px">${esc(f.brand || 'Senza marca')} · ${round(f.kcal)} ${kcalSuffix}</div>
                 ${f.notes ? `<div style="font-size:11px;color:var(--text-3);margin-top:3px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(f.notes)}</div>` : ''}
               </div>
               <button class="icon-btn" data-edit-custom="${esc(f.id)}" aria-label="Modifica">${I.edit}</button>
               <button class="icon-btn" data-del-custom="${esc(f.id)}" aria-label="Elimina" style="color:var(--text-3)">${I.trash}</button>
             </div>
-          `).join('') + (list.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${list.length - 100} altri risultati. Affina la ricerca.</div>` : ''),
+          `;
+          }).join('') + (list.length > 100 ? `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">${list.length - 100} altri risultati. Affina la ricerca.</div>` : ''),
     };
   };
   const initial = renderListHtml(filter);
@@ -6066,7 +6171,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.28.1';
+const APP_VERSION = '1.28.4';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -7734,34 +7839,137 @@ function openCustomPicker(meal) {
     toast('Nessun alimento salvato — creane uno dal profilo');
     return;
   }
-  const html = `
-    <h2 class="sheet-title">I miei alimenti</h2>
-    <p class="sheet-sub">Scegli un alimento da aggiungere.</p>
-    <div>
-      ${state.customFoods.map(f => `
+  const renderResults = (filter) => {
+    const fLow = stripAccents((filter || '').trim().toLowerCase());
+    const filtered = fLow
+      ? state.customFoods.filter(f => stripAccents(((f.name || '') + ' ' + (f.brand || '') + ' ' + (f.notes || '')).toLowerCase()).includes(fLow))
+      : state.customFoods;
+    if (filtered.length === 0) {
+      return `<div class="subtle-list-empty">Nessun risultato</div>`;
+    }
+    return filtered.map(f => {
+      const kcalSuffix = f.unitName ? `kcal/${f.unitName}` : 'kcal/100g';
+      return `
         <div class="result" data-pick-my="${esc(f.id)}">
           <div class="result-img-placeholder">${I.leaf}</div>
           <div class="result-main">
             <div class="result-name">${esc(f.name)}<span class="result-tag">Mio</span></div>
             <div class="result-meta">${esc(f.brand || 'Senza marca')}</div>
           </div>
-          <div class="result-kcal">${round(f.kcal)}<div style="font-size:10px;color:var(--text-3);font-weight:400">kcal/100g</div></div>
-        </div>`).join('')}
+          <div class="result-kcal">${round(f.kcal)}<div style="font-size:10px;color:var(--text-3);font-weight:400">${kcalSuffix}</div></div>
+        </div>`;
+    }).join('');
+  };
+
+  const html = `
+    <h2 class="sheet-title">I miei alimenti</h2>
+    <p class="sheet-sub">Cerca o scegli un alimento da aggiungere.</p>
+    <div class="search-input-wrap" style="margin-bottom:12px">
+      ${I.search}
+      <input type="search" class="search-input" id="cp-search" placeholder="Cerca tra i tuoi alimenti..." autocomplete="off">
+    </div>
+    <div id="cp-results">
+      ${renderResults('')}
     </div>
   `;
   openSheet(html);
-  document.querySelectorAll('[data-pick-my]').forEach(el => {
-    el.onclick = () => {
-      const f = state.customFoods.find(x => x.id === el.dataset.pickMy);
-      openAddFood({...f, _custom: true}, meal);
-    };
-  });
+
+  const bindPicks = () => {
+    document.querySelectorAll('[data-pick-my]').forEach(el => {
+      el.onclick = () => {
+        const f = state.customFoods.find(x => x.id === el.dataset.pickMy);
+        // Imposta returnTo per tornare qui dopo l'aggiunta
+        state.addFood = { returnTo: { type: 'customPicker', meal } };
+        openAddFood({...f, _custom: true}, meal);
+      };
+    });
+  };
+  bindPicks();
+
+  const searchInp = document.getElementById('cp-search');
+  const resultsBox = document.getElementById('cp-results');
+  if (searchInp && resultsBox) {
+    searchInp.addEventListener('input', () => {
+      resultsBox.innerHTML = renderResults(searchInp.value);
+      bindPicks();
+    });
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
    BINDINGS
    ═══════════════════════════════════════════════════════════ */
 function bindApp() {
+  // Header back button (presente su tab Cerca arrivati da un pasto)
+  const headerBack = document.getElementById('header-back');
+  if (headerBack) {
+    headerBack.onclick = () => {
+      const origin = state.searchOriginTab || 'today';
+      state.searchOriginTab = null;
+      state.searchQuery = '';
+      state.searchResults = [];
+      state.searchTemplateResults = [];
+      state.searchState = 'idle';
+      state.aiSearchPending = null;
+      state.tab = origin;
+      render();
+    };
+  }
+  // Tab bar manuale annulla la "origine" del search (se l'utente cambia
+  // tab manualmente la prossima volta non c'è back automatico).
+  if (state.tab !== 'search') {
+    state.searchOriginTab = null;
+  }
+
+  // Edge swipe (bordo sinistro → destra) sullo screen quando c'è un back
+  // disponibile, per tornare alla tab di origine come gesture iOS nativa.
+  if (state.searchOriginTab && state.tab === 'search') {
+    const screen = document.getElementById('screen');
+    if (screen) {
+      let sx = 0, sy = 0, cx = 0, cy = 0, dragging = false;
+      screen.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        const t = e.touches[0];
+        if (t.clientX > 30) return; // solo dal bordo sinistro
+        sx = t.clientX; sy = t.clientY;
+        cx = sx; cy = sy;
+        dragging = true;
+      }, { passive: true });
+      screen.addEventListener('touchmove', (e) => {
+        if (!dragging) return;
+        cx = e.touches[0].clientX;
+        cy = e.touches[0].clientY;
+        const dx = cx - sx;
+        const dy = Math.abs(cy - sy);
+        if (dy > Math.abs(dx) + 10) { dragging = false; screen.style.transform = ''; return; }
+        if (dx > 0) screen.style.transform = `translateX(${dx}px)`;
+      }, { passive: true });
+      screen.addEventListener('touchend', () => {
+        if (!dragging) return;
+        dragging = false;
+        const dx = cx - sx;
+        if (dx > 80) {
+          screen.style.transition = 'transform 200ms ease-out';
+          screen.style.transform = 'translateX(100%)';
+          setTimeout(() => {
+            const origin = state.searchOriginTab || 'today';
+            state.searchOriginTab = null;
+            state.searchQuery = '';
+            state.searchResults = [];
+            state.searchTemplateResults = [];
+            state.searchState = 'idle';
+            state.aiSearchPending = null;
+            state.tab = origin;
+            render();
+          }, 200);
+        } else {
+          screen.style.transition = 'transform 180ms ease';
+          screen.style.transform = '';
+        }
+      });
+    }
+  }
+
   // tabbar
   document.querySelectorAll('.tab').forEach(t => {
     t.onclick = async () => {
@@ -7989,6 +8197,8 @@ function bindApp() {
   document.querySelectorAll('[data-add-search]').forEach(b => {
     b.onclick = () => {
       state.targetMeal = b.dataset.addSearch;
+      // Ricorda da dove veniamo per il bottone "Indietro"
+      state.searchOriginTab = state.tab;
       // Reset ricerca per non ricordare la query precedente
       state.searchQuery = '';
       state.searchResults = [];
@@ -8100,14 +8310,20 @@ function bindSearchResults() {
   document.querySelectorAll('[data-pick]').forEach(el => {
     el.onclick = () => {
       const f = state.searchResults.find(x => String(x.id) === el.dataset.pick);
-      if (f) openAddFood(f, state.targetMeal);
+      if (f) {
+        state.addFood = { returnTo: { type: 'search' } };
+        openAddFood(f, state.targetMeal);
+      }
     };
   });
   // Click su un alimento "più usato" (idle search state)
   document.querySelectorAll('[data-pick-mu]').forEach(el => {
     el.onclick = () => {
       const f = (state.mostUsedFoods || []).find(x => String(x.id) === el.dataset.pickMu);
-      if (f) openAddFood(f, state.targetMeal);
+      if (f) {
+        state.addFood = { returnTo: { type: 'search' } };
+        openAddFood(f, state.targetMeal);
+      }
     };
   });
   document.querySelectorAll('[data-pick-tpl]').forEach(el => {
