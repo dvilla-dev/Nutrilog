@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.34.2 -->
+<!-- NUTRILOG_VERSION: 1.34.3 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -323,12 +323,14 @@
 
   /* ─── MINI WEEK BARS (in card kcal) ─────────────────────── */
   .mini-week {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 4px;
     margin-top: 12px;
     padding-top: 10px;
     border-top: 1px solid var(--border);
+  }
+  .mw-bars {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
   }
   .mwb-day {
     display: flex;
@@ -379,8 +381,6 @@
   /* Riepilogo settimanale sotto le barre */
   .mw-footer {
     margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--border);
     text-align: center;
     font-size: 11.5px;
     color: var(--text-2);
@@ -6687,7 +6687,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.34.2';
+const APP_VERSION = '1.34.3';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
