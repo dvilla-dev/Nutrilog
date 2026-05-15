@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.34.1 -->
+<!-- NUTRILOG_VERSION: 1.34.2 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -376,6 +376,30 @@
     color: var(--accent);
     font-weight: 700;
   }
+  /* Riepilogo settimanale sotto le barre */
+  .mw-footer {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--text-2);
+    letter-spacing: 0.02em;
+  }
+  .mw-footer-total {
+    font-weight: 600;
+    color: var(--text);
+  }
+  .mw-footer-sep {
+    margin: 0 6px;
+    color: var(--text-3);
+  }
+  .mw-footer-delta {
+    font-weight: 600;
+  }
+  .mw-footer-delta.over { color: var(--danger); }
+  .mw-footer-delta.under { color: var(--accent); }
+  .mw-footer-delta.ok { color: var(--accent); }
 
   /* ═══════════════════════════════════════════════════
      MACRO BARS
@@ -6172,7 +6196,43 @@ async function populateMiniWeekBars() {
         </button>
       `;
     }).join('');
-    el.innerHTML = bars;
+
+    // Riepilogo settimanale: totale assunte + delta vs obiettivo settimanale
+    let footer = '';
+    if (summary.goalSum > 0) {
+      // c'è almeno un obiettivo configurato in settimana
+      const delta = Math.round(summary.deltaTotal);
+      const totalKcal = Math.round(summary.totalKcal);
+      let deltaClass = '';
+      let deltaText = '';
+      if (delta > 0) {
+        deltaClass = 'over';
+        deltaText = `+${delta} sforate`;
+      } else if (delta < 0) {
+        deltaClass = 'under';
+        deltaText = `${delta} rimaste`;
+      } else {
+        deltaClass = 'ok';
+        deltaText = 'in linea';
+      }
+      footer = `
+        <div class="mw-footer">
+          <span class="mw-footer-total">${totalKcal.toLocaleString('it-IT')} kcal</span>
+          <span class="mw-footer-sep">·</span>
+          <span class="mw-footer-delta ${deltaClass}">${deltaText}</span>
+        </div>
+      `;
+    } else if (summary.totalKcal > 0) {
+      // Nessun obiettivo settimanale: mostra solo il totale
+      const totalKcal = Math.round(summary.totalKcal);
+      footer = `
+        <div class="mw-footer">
+          <span class="mw-footer-total">${totalKcal.toLocaleString('it-IT')} kcal settimana</span>
+        </div>
+      `;
+    }
+
+    el.innerHTML = `<div class="mw-bars">${bars}</div>${footer}`;
     // Click sui giorni: naviga a quella data
     el.querySelectorAll('[data-mw-date]').forEach(btn => {
       btn.onclick = async () => {
@@ -6627,7 +6687,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.34.1';
+const APP_VERSION = '1.34.2';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -8656,6 +8716,19 @@ function bindApp() {
       }
       state.tab = next;
       render();
+      // Auto-focus barra ricerca al click su tab "Cerca" — iOS Safari richiede
+      // che il focus avvenga "sincrono" rispetto all'azione utente (tap).
+      // Usiamo requestAnimationFrame per attendere il rendering del nuovo DOM.
+      if (next === 'search') {
+        requestAnimationFrame(() => {
+          const qInp = document.getElementById('q');
+          if (qInp) {
+            qInp.focus();
+            // iOS a volte non apre la tastiera al primo focus: tap secondario
+            qInp.click();
+          }
+        });
+      }
     };
   });
 
