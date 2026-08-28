@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.35.0 -->
+<!-- NUTRILOG_VERSION: 1.35.1 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -201,19 +201,19 @@
     -webkit-backdrop-filter: blur(24px) saturate(140%);
     border-top: 1px solid var(--border-strong);
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    padding: 6px 4px max(2px, var(--safe-bot));
-    gap: 2px;
+    grid-template-columns: repeat(5, 1fr);
+    padding: 6px 2px max(2px, var(--safe-bot));
+    gap: 0;
     z-index: 10;
   }
   .tab {
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     gap: 2px;
-    padding: 4px 2px;
+    padding: 4px 0;
     border-radius: 10px;
     color: var(--text-3);
-    font-size: 10px;
+    font-size: 9.5px;
     font-weight: 500;
     letter-spacing: 0.01em;
     transition: color var(--dur) var(--ease);
@@ -225,7 +225,7 @@
     text-overflow: ellipsis;
     max-width: 100%;
   }
-  .tab svg { width: 21px; height: 21px; flex-shrink: 0; }
+  .tab svg { width: 19px; height: 19px; flex-shrink: 0; }
   .tab.active { color: var(--accent); }
   .tab:active { transform: scale(0.94); }
 
@@ -513,6 +513,107 @@
     font-size: 12px;
   }
   .plan-import-day svg { width: 14px; height: 14px; }
+  /* Ring compatto + macro nel giorno espanso */
+  .plan-day-summary-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 12px 12px;
+    margin: 4px 4px 10px;
+    background: var(--bg);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  .plan-summary-ring {
+    position: relative;
+    width: 100px; height: 100px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .plan-summary-ring svg {
+    transform: rotate(-90deg);
+    overflow: visible;
+  }
+  .plan-ring-fg {
+    stroke: var(--accent);
+    transition: stroke-dashoffset 400ms var(--ease);
+    filter: drop-shadow(0 0 4px rgba(198, 255, 0, 0.25));
+  }
+  .plan-day-summary-card.over .plan-ring-fg {
+    stroke: var(--danger);
+    filter: drop-shadow(0 0 5px rgba(255, 80, 80, 0.4));
+  }
+  .plan-ring-center {
+    position: absolute;
+    text-align: center;
+    pointer-events: none;
+  }
+  .plan-ring-value {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .plan-ring-label {
+    font-size: 9px;
+    color: var(--text-3);
+    margin-top: 3px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .plan-over {
+    color: var(--danger);
+    font-weight: 600;
+  }
+  .plan-summary-macros {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .plan-macro-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .plan-macro-label {
+    font-size: 10.5px;
+    color: var(--text-2);
+    min-width: 40px;
+    font-weight: 500;
+  }
+  .plan-macro-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .plan-macro-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 400ms var(--ease);
+  }
+  .plan-macro-fill.protein { background: var(--protein); }
+  .plan-macro-fill.carbs { background: var(--carbs); }
+  .plan-macro-fill.fat { background: var(--fat); }
+  .plan-macro-value {
+    font-size: 10.5px;
+    color: var(--text);
+    font-weight: 600;
+    min-width: 55px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .plan-macro-value small {
+    color: var(--text-3);
+    font-weight: 400;
+    font-size: 9px;
+  }
   /* Nel piano il pasto è renderizzato in modalità compatta */
   .meal-plan {
     margin: 6px 0;
@@ -2977,6 +3078,24 @@ function planDayKcal(planDay) {
   }
   return Math.round(total);
 }
+/** Calcola kcal + macros totali di un giorno del piano. */
+function planDayTotals(planDay) {
+  const day = state.plan[planDay] || {};
+  let kcal = 0, protein = 0, carbs = 0, fat = 0, fiber = 0, sugar = 0, sodium = 0;
+  for (const meal of Object.keys(day)) {
+    for (const e of (day[meal] || [])) {
+      const f = (e.grams || 0) / 100;
+      kcal    += (e.kcal || 0) * f;
+      protein += (e.protein || 0) * f;
+      carbs   += (e.carbs || 0) * f;
+      fat     += (e.fat || 0) * f;
+      fiber   += (e.fiber || 0) * f;
+      sugar   += (e.sugar || 0) * f;
+      sodium  += (e.sodium || 0) * f;
+    }
+  }
+  return { kcal, protein, carbs, fat, fiber, sugar, sodium };
+}
 /** Conta gli alimenti totali in un giorno del piano. */
 function planDayCount(planDay) {
   const day = state.plan[planDay] || {};
@@ -4439,7 +4558,7 @@ function renderTabbar() {
     return `${d} ${m}`;
   })();
   return `<div class="tabbar">
-    ${tab('today', todayLabel, I.home, !onToday ? '• torna a oggi' : null)}
+    ${tab('today', todayLabel, I.home, !onToday ? 'torna' : null)}
     ${tab('search', 'Cerca', I.search)}
     ${tab('plan', 'Piano', I.calendar || I.stack)}
     ${tab('photo', 'Foto', I.camera)}
@@ -4674,13 +4793,61 @@ function renderPlan() {
   for (const d of PLAN_DAYS) {
     if (planDayCount(d) > 0) { hasAnyData = true; break; }
   }
-  const dayCards = PLAN_DAYS.map(day => {
+  // Calcola la data ISO di ogni giorno della settimana corrente (per usare goals per weekday)
+  const monday = getMondayOfWeek(state.date || todayISO());
+  const dayCards = PLAN_DAYS.map((day, idx) => {
     const count = planDayCount(day);
     const kcal = planDayKcal(day);
     const isExpanded = state.planExpanded === day;
     const hasFood = count > 0;
     const letter = day.charAt(0).toUpperCase();
     const label = PLAN_DAY_LABELS[day];
+    // Costruisci il ring compatto + macro per il giorno espanso
+    let dayHeader = '';
+    if (isExpanded) {
+      const targetDate = shiftDate(monday, idx);
+      const goals = getGoalsForDate(targetDate);
+      const totals = planDayTotals(day);
+      const goalsConfigured = goals.calories > 0;
+      const R = 40, C = 2 * Math.PI * R;
+      const pct = goalsConfigured ? Math.max(0, Math.min(1.2, totals.kcal / goals.calories)) : 0;
+      const off = C * (1 - Math.min(pct, 1));
+      const isOver = goalsConfigured && totals.kcal > goals.calories;
+      const remaining = goalsConfigured ? Math.max(0, goals.calories - totals.kcal) : 0;
+      const overAmount = isOver ? Math.round(totals.kcal - goals.calories) : 0;
+      const macroBar = (lbl, val, goal, cls) => {
+        const p = goal > 0 ? Math.max(0, Math.min(1, val / goal)) * 100 : 0;
+        return `<div class="plan-macro-row">
+          <div class="plan-macro-label">${lbl}</div>
+          <div class="plan-macro-bar"><div class="plan-macro-fill ${cls}" style="width:${p}%"></div></div>
+          <div class="plan-macro-value">${round(val)}<small>/${round(goal)}g</small></div>
+        </div>`;
+      };
+      dayHeader = `
+        <div class="plan-day-summary-card ${isOver ? 'over' : ''}">
+          <div class="plan-summary-ring">
+            <svg width="100" height="100" viewBox="0 0 100 100">
+              <circle class="ring-bg" cx="50" cy="50" r="${R}" fill="none" stroke-width="8"/>
+              <circle class="plan-ring-fg" cx="50" cy="50" r="${R}" fill="none" stroke-width="8"
+                stroke-linecap="round"
+                stroke-dasharray="${C}"
+                stroke-dashoffset="${off}"/>
+            </svg>
+            <div class="plan-ring-center">
+              <div class="plan-ring-value">${round(totals.kcal)}</div>
+              <div class="plan-ring-label">${goalsConfigured
+                ? (isOver ? `<span class="plan-over">−${overAmount}</span>` : `${round(remaining)} rim.`)
+                : 'kcal'}</div>
+            </div>
+          </div>
+          <div class="plan-summary-macros">
+            ${macroBar('Prot', totals.protein, goals.protein, 'protein')}
+            ${macroBar('Carb', totals.carbs, goals.carbs, 'carbs')}
+            ${macroBar('Grassi', totals.fat, goals.fat, 'fat')}
+          </div>
+        </div>
+      `;
+    }
     return `
       <div class="plan-day ${isExpanded ? 'expanded' : ''}">
         <div class="plan-day-head" data-plan-toggle="${day}">
@@ -4695,6 +4862,7 @@ function renderPlan() {
         </div>
         ${isExpanded ? `
           <div class="plan-day-body">
+            ${dayHeader}
             ${visibleMeals().map(m => renderMeal(m.id, m.name, day)).join('')}
             <button class="btn btn-primary plan-import-day" data-plan-import="${day}" ${!hasFood ? 'disabled' : ''}>${I.right} Importa ${label} nel diario</button>
           </div>
@@ -7008,7 +7176,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.35.0';
+const APP_VERSION = '1.35.1';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
