@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.34.3 -->
+<!-- NUTRILOG_VERSION: 1.35.0 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -400,6 +400,125 @@
   .mw-footer-delta.over { color: var(--danger); }
   .mw-footer-delta.under { color: var(--accent); }
   .mw-footer-delta.ok { color: var(--accent); }
+
+  /* ─── PIANO SETTIMANALE ─────────────────────── */
+  .plan-top {
+    padding: 4px var(--pad-lg) 12px;
+  }
+  .plan-import-note {
+    font-size: 10.5px;
+    color: var(--text-3);
+    text-align: center;
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+  .plan-import-all {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+  }
+  .plan-import-all svg { width: 16px; height: 16px; }
+  .plan-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    color: var(--text-3);
+  }
+  .plan-clear svg { width: 14px; height: 14px; }
+  .plan-list {
+    padding: 0 var(--pad-lg) 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .plan-day {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color var(--dur) var(--ease);
+  }
+  .plan-day.expanded {
+    border-color: var(--border-strong);
+  }
+  .plan-day-head {
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: background var(--dur) var(--ease);
+  }
+  .plan-day.expanded .plan-day-head {
+    background: var(--surface-2);
+  }
+  .plan-day-head:active {
+    background: var(--surface-2);
+  }
+  .plan-day-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .plan-day-badge {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--surface-3);
+    color: var(--text-3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .plan-day-badge.has-food {
+    background: var(--accent);
+    color: var(--accent-text, #000);
+  }
+  .plan-day-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .plan-day-summary {
+    font-size: 10.5px;
+    color: var(--text-3);
+    margin-top: 1px;
+  }
+  .plan-day-chevron {
+    color: var(--text-3);
+    display: flex;
+    align-items: center;
+  }
+  .plan-day.expanded .plan-day-chevron {
+    color: var(--accent);
+  }
+  .plan-day-chevron svg { width: 16px; height: 16px; }
+  .plan-day-body {
+    padding: 8px 10px 12px;
+    border-top: 1px solid var(--border);
+  }
+  .plan-import-day {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 8px;
+    font-size: 12px;
+  }
+  .plan-import-day svg { width: 14px; height: 14px; }
+  /* Nel piano il pasto è renderizzato in modalità compatta */
+  .meal-plan {
+    margin: 6px 0;
+    background: var(--bg);
+    border-radius: 10px;
+  }
 
   /* ═══════════════════════════════════════════════════
      MACRO BARS
@@ -1784,6 +1903,8 @@ const I = {
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M6 6l1 14a2 2 0 002 2h6a2 2 0 002-2l1-14"/></svg>',
   left: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
   right: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.9 2.9l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.9-2.9l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.9-2.9l.1.1a1.7 1.7 0 001.8.3h.2a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.9 2.9l-.1.1a1.7 1.7 0 00-.3 1.8v.2a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
   target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>',
   book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11a3 3 0 013 3v13H7a3 3 0 01-3-3z"/><path d="M4 17a3 3 0 013-3h11"/></svg>',
@@ -1822,6 +1943,13 @@ const state = {
   editFood: null,       // custom food being edited
   editTemplate: null,   // template being edited
   selectionMode: null,  // null o { meal: 'breakfast', selected: Set<itemId> } per selezione multipla
+  // ─ PIANO SETTIMANALE (local-only, non sincronizzato al cloud) ─
+  // Struttura: { monday: {breakfast:[], lunch:[], ...}, tuesday: {...}, ... }
+  plan: {
+    monday: {}, tuesday: {}, wednesday: {}, thursday: {},
+    friday: {}, saturday: {}, sunday: {},
+  },
+  planExpanded: null,  // giorno attualmente espanso nel Piano ('monday', 'tuesday', ecc. o null)
 };
 
 /* ─── UTILS ──────────────────────────────────────────────── */
@@ -2783,6 +2911,82 @@ function saveDiary() {
   return _saveChain;
 }
 
+/* ─── PIANO SETTIMANALE ──────────────────────────────────
+   Local-only. Persistito su localStorage con chiave 'plan:<userId>'.
+   Non sincronizzato al cloud (è preferenza UI di pianificazione).
+   ──────────────────────────────────────────────────────── */
+const PLAN_DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+const PLAN_DAY_LABELS = {
+  monday: 'Lunedì', tuesday: 'Martedì', wednesday: 'Mercoledì',
+  thursday: 'Giovedì', friday: 'Venerdì', saturday: 'Sabato', sunday: 'Domenica',
+};
+function planEmptyDay() {
+  const out = { breakfast: [], lunch: [], dinner: [], snack: [] };
+  try {
+    const meals = getMealsCfg();
+    for (const m of meals) if (!out[m.id]) out[m.id] = [];
+  } catch (_) {}
+  return out;
+}
+function loadPlan() {
+  if (!state.user || !state.user.userId) return;
+  try {
+    const raw = localStorage.getItem('plan:' + state.user.userId);
+    if (!raw) {
+      state.plan = {};
+      for (const d of PLAN_DAYS) state.plan[d] = planEmptyDay();
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    state.plan = {};
+    for (const d of PLAN_DAYS) {
+      state.plan[d] = parsed[d] || planEmptyDay();
+    }
+  } catch (_) {
+    state.plan = {};
+    for (const d of PLAN_DAYS) state.plan[d] = planEmptyDay();
+  }
+}
+function savePlan() {
+  if (!state.user || !state.user.userId) return;
+  try {
+    localStorage.setItem('plan:' + state.user.userId, JSON.stringify(state.plan));
+  } catch (e) { dlog('savePlan FAIL: ' + e.message); }
+}
+/** Ritorna lo "store" corretto in base al contesto: il diario o un giorno del piano. */
+function getMealStore(planDay) {
+  if (planDay) {
+    if (!state.plan[planDay]) state.plan[planDay] = planEmptyDay();
+    return state.plan[planDay];
+  }
+  return state.diary;
+}
+/** Salva il diario o il piano in base al contesto. */
+function saveActiveStore(planDay) {
+  if (planDay) { savePlan(); return Promise.resolve(); }
+  return saveDiary();
+}
+/** Calcola kcal totali di un giorno del piano. */
+function planDayKcal(planDay) {
+  const day = state.plan[planDay] || {};
+  let total = 0;
+  for (const meal of Object.keys(day)) {
+    for (const e of (day[meal] || [])) {
+      total += (e.kcal || 0) * (e.grams || 0) / 100;
+    }
+  }
+  return Math.round(total);
+}
+/** Conta gli alimenti totali in un giorno del piano. */
+function planDayCount(planDay) {
+  const day = state.plan[planDay] || {};
+  let count = 0;
+  for (const meal of Object.keys(day)) {
+    count += (day[meal] || []).length;
+  }
+  return count;
+}
+
 /* ─── CLOUD AUTO-SYNC (debounced) ──────────────────────── */
 let _cloudSyncTimer = null;
 let _lastPushedSignature = null; // ricorda quanti dati abbiamo pushato ultimamente
@@ -2900,7 +3104,7 @@ async function rememberGrams(food, grams) {
   }
 }
 
-async function addFoodToDiary(meal, food, grams) {
+async function addFoodToDiary(meal, food, grams, planDay = null) {
   const entry = {
     id: uid(),
     foodId: food.id || food.code || '',
@@ -2918,36 +3122,40 @@ async function addFoodToDiary(meal, food, grams) {
     // Se l'alimento è "per pezzo", salva il nome dell'unità per la visualizzazione
     unitName: food.unitName || '',
   };
-  state.diary[meal] = state.diary[meal] || [];
-  state.diary[meal].push(entry);
-  dlog(`ADD ${meal} on ${state.diaryDate}: ${entry.name} ${entry.grams}g`);
-  // Memorizza l'ultima quantità per questo alimento (ricordata al prossimo uso)
-  rememberGrams(food, entry.grams).catch(() => {});
-  await saveDiary();
+  const store = getMealStore(planDay);
+  store[meal] = store[meal] || [];
+  store[meal].push(entry);
+  dlog(`ADD ${meal} on ${planDay || state.diaryDate}: ${entry.name} ${entry.grams}g`);
+  // Memorizza l'ultima quantità per questo alimento (solo per il diario reale)
+  if (!planDay) rememberGrams(food, entry.grams).catch(() => {});
+  await saveActiveStore(planDay);
 }
-async function removeFromDiary(meal, entryId) {
-  state.diary[meal] = (state.diary[meal] || []).filter(e => e.id !== entryId);
-  await saveDiary();
+async function removeFromDiary(meal, entryId, planDay = null) {
+  const store = getMealStore(planDay);
+  store[meal] = (store[meal] || []).filter(e => e.id !== entryId);
+  await saveActiveStore(planDay);
 }
 
-async function updateDiaryEntry(meal, entryId, patch) {
-  const arr = state.diary[meal] || [];
+async function updateDiaryEntry(meal, entryId, patch, planDay = null) {
+  const store = getMealStore(planDay);
+  const arr = store[meal] || [];
   const idx = arr.findIndex(e => e.id === entryId);
   if (idx === -1) return false;
   arr[idx] = { ...arr[idx], ...patch };
-  await saveDiary();
+  await saveActiveStore(planDay);
   return true;
 }
 
-async function moveDiaryEntry(fromMeal, entryId, toMeal) {
+async function moveDiaryEntry(fromMeal, entryId, toMeal, planDay = null) {
   if (fromMeal === toMeal) return false;
-  const arr = state.diary[fromMeal] || [];
+  const store = getMealStore(planDay);
+  const arr = store[fromMeal] || [];
   const idx = arr.findIndex(e => e.id === entryId);
   if (idx === -1) return false;
   const [entry] = arr.splice(idx, 1);
-  state.diary[toMeal] = state.diary[toMeal] || [];
-  state.diary[toMeal].push(entry);
-  await saveDiary();
+  store[toMeal] = store[toMeal] || [];
+  store[toMeal].push(entry);
+  await saveActiveStore(planDay);
   return true;
 }
 
@@ -2999,9 +3207,10 @@ function computeTotals() {
 function mealKcal(meal) {
   return (state.diary[meal] || []).reduce((s, e) => s + e.kcal * e.grams / 100, 0);
 }
-function mealMacros(meal) {
+function mealMacros(meal, planDay = null) {
   // Restituisce { kcal, protein, carbs, fat } totali per il pasto (in grammi per macros)
-  const items = state.diary[meal] || [];
+  const store = getMealStore(planDay);
+  const items = store[meal] || [];
   let kcal = 0, protein = 0, carbs = 0, fat = 0;
   for (const e of items) {
     const factor = (e.grams || 0) / 100;
@@ -3060,9 +3269,9 @@ async function deleteTemplate(id) {
   await sd(`mealTemplates:${state.user.userId}:${id}`);
   scheduleCloudAutoSync();
 }
-async function applyTemplate(tpl, meal) {
+async function applyTemplate(tpl, meal, planDay = null) {
   for (const item of tpl.items) {
-    await addFoodToDiary(meal, item.food, item.grams);
+    await addFoodToDiary(meal, item.food, item.grams, planDay);
   }
 }
 
@@ -3820,6 +4029,7 @@ async function boot() {
       loadTemplates(),
       refreshDbFoodsCache(),
     ]);
+    loadPlan();
     state.screen = 'app';
     render();
     // Ora è sicuro riabilitare il sync
@@ -3952,6 +4162,7 @@ async function loadAll() {
     loadTemplates(),
     refreshDbFoodsCache(),
   ]);
+  loadPlan();
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -4193,6 +4404,7 @@ function renderAppShell() {
     content = renderSearch();
   }
   if (state.tab === 'photo')   { header = renderHeader('Foto AI'); content = renderPhotoTab(); }
+  if (state.tab === 'plan')    { header = renderHeader('Piano'); content = renderPlan(); }
   if (state.tab === 'profile') { header = renderHeader('Profilo'); content = renderProfile(); }
   return `${header}<div class="screen" id="screen">${content}</div>${tabbar}`;
 }
@@ -4229,6 +4441,7 @@ function renderTabbar() {
   return `<div class="tabbar">
     ${tab('today', todayLabel, I.home, !onToday ? '• torna a oggi' : null)}
     ${tab('search', 'Cerca', I.search)}
+    ${tab('plan', 'Piano', I.calendar || I.stack)}
     ${tab('photo', 'Foto', I.camera)}
     ${tab('profile', 'Profilo', I.user)}
   </div>`;
@@ -4398,15 +4611,18 @@ function renderToday() {
     <button class="fab" id="fab-add" aria-label="Aggiungi rapidamente">${I.plus}</button>
   `;
 }
-function renderMeal(key, title) {
-  const items = state.diary[key] || [];
-  const m = mealMacros(key);
+function renderMeal(key, title, planDay = null) {
+  const store = getMealStore(planDay);
+  const items = store[key] || [];
+  const m = mealMacros(key, planDay);
   const hasFood = items.length > 0;
-  const inSelMode = state.selectionMode && state.selectionMode.meal === key;
+  // In modalità piano niente selezione multipla/copia da giorno precedente (semplice)
+  const inSelMode = !planDay && state.selectionMode && state.selectionMode.meal === key;
   const selectedIds = inSelMode ? state.selectionMode.selected : null;
   const selCount = inSelMode ? selectedIds.size : 0;
+  const pAttr = planDay ? ` data-plan-day="${planDay}"` : '';
 
-  return `<div class="meal" data-meal="${key}">
+  return `<div class="meal ${planDay ? 'meal-plan' : ''}" data-meal="${key}"${pAttr}>
     <div class="meal-head">
       <div class="meal-title"><span class="dot"></span>${esc(title)}</div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -4418,8 +4634,8 @@ function renderMeal(key, title) {
             <div class="meal-kcal">${round(m.kcal)} kcal</div>
             ${hasFood ? `<div class="meal-macros"><span style="color:var(--protein)">P ${round(m.protein, 1)}g</span> · <span style="color:var(--carbs)">C ${round(m.carbs, 1)}g</span> · <span style="color:var(--fat)">G ${round(m.fat, 1)}g</span></div>` : ''}
           </div>
-          ${hasFood ? `<button class="meal-sel-btn" data-sel-start="${key}" aria-label="Seleziona alimenti">${I.check}</button>` : ''}
-          <button class="meal-copy-btn" data-copy-meal="${key}" aria-label="Copia da giorno precedente" title="Copia da un altro giorno">${I.copy}</button>
+          ${!planDay && hasFood ? `<button class="meal-sel-btn" data-sel-start="${key}" aria-label="Seleziona alimenti">${I.check}</button>` : ''}
+          ${!planDay ? `<button class="meal-copy-btn" data-copy-meal="${key}" aria-label="Copia da giorno precedente" title="Copia da un altro giorno">${I.copy}</button>` : ''}
         `}
       </div>
     </div>
@@ -4428,31 +4644,116 @@ function renderMeal(key, title) {
         ? `<div class="meal-empty">Nessun alimento</div>`
         : items.map(it => {
             const isSel = selectedIds && selectedIds.has(it.id);
-            // Se l'alimento ha un'unità (es. "uovo"), mostra "1 uovo" invece di "100g"
             const quantityLabel = it.unitName
-              ? `${round(it.grams / 100, 1)} ${esc(it.unitName)}${it.grams / 100 !== 1 ? '' : ''}`
+              ? `${round(it.grams / 100, 1)} ${esc(it.unitName)}`
               : `${round(it.grams)}g`;
             return `
-              <div class="food-item ${inSelMode ? 'sel-mode' : ''} ${isSel ? 'sel' : ''}" ${inSelMode ? `data-sel-toggle="${key}:${it.id}"` : `data-edit="${key}:${it.id}"`}>
+              <div class="food-item ${inSelMode ? 'sel-mode' : ''} ${isSel ? 'sel' : ''}" ${inSelMode ? `data-sel-toggle="${key}:${it.id}"` : `data-edit="${key}:${it.id}"${pAttr}`}>
                 ${inSelMode ? `<div class="food-checkbox">${isSel ? I.check : ''}</div>` : ''}
                 <div class="food-main">
                   <div class="food-name">${esc(it.name)}</div>
                   <div class="food-meta">${esc(it.brand ? it.brand + ' · ' : '')}${quantityLabel} · ${round(it.kcal * it.grams / 100)} kcal</div>
                 </div>
-                ${!inSelMode ? `<button class="food-del" data-del="${key}:${it.id}" aria-label="Rimuovi">${I.trash}</button>` : ''}
+                ${!inSelMode ? `<button class="food-del" data-del="${key}:${it.id}"${pAttr} aria-label="Rimuovi">${I.trash}</button>` : ''}
               </div>`;
           }).join('')}
     </div>
     ${!inSelMode ? `<div class="meal-add">
-      <button data-add-quick="${key}">${I.bolt}<span>Rapido</span></button>
-      <button data-add-search="${key}">${I.search}<span>Cerca</span></button>
-      <button data-add-template="${key}">${I.stack}<span>Pasti</span></button>
-      <button data-add-custom="${key}">${I.box}<span>I miei</span></button>
+      <button data-add-quick="${key}"${pAttr}>${I.bolt}<span>Rapido</span></button>
+      <button data-add-search="${key}"${pAttr}>${I.search}<span>Cerca</span></button>
+      <button data-add-template="${key}"${pAttr}>${I.stack}<span>Pasti</span></button>
+      <button data-add-custom="${key}"${pAttr}>${I.box}<span>I miei</span></button>
     </div>` : ''}
   </div>`;
 }
 
-/* ─── SEARCH ─────────────────────────────────────────────── */
+/* ─── PIANO SETTIMANALE (RENDER) ─────────────────────── */
+function renderPlan() {
+  // Verifica se ci sono dati in almeno un giorno
+  let hasAnyData = false;
+  for (const d of PLAN_DAYS) {
+    if (planDayCount(d) > 0) { hasAnyData = true; break; }
+  }
+  const dayCards = PLAN_DAYS.map(day => {
+    const count = planDayCount(day);
+    const kcal = planDayKcal(day);
+    const isExpanded = state.planExpanded === day;
+    const hasFood = count > 0;
+    const letter = day.charAt(0).toUpperCase();
+    const label = PLAN_DAY_LABELS[day];
+    return `
+      <div class="plan-day ${isExpanded ? 'expanded' : ''}">
+        <div class="plan-day-head" data-plan-toggle="${day}">
+          <div class="plan-day-info">
+            <div class="plan-day-badge ${hasFood ? 'has-food' : ''}">${letter}</div>
+            <div>
+              <div class="plan-day-name">${label}</div>
+              <div class="plan-day-summary">${hasFood ? `${count} aliment${count === 1 ? 'o' : 'i'} · ${kcal} kcal` : 'Vuoto'}</div>
+            </div>
+          </div>
+          <div class="plan-day-chevron">${isExpanded ? I.up || '▲' : I.down || '▼'}</div>
+        </div>
+        ${isExpanded ? `
+          <div class="plan-day-body">
+            ${visibleMeals().map(m => renderMeal(m.id, m.name, day)).join('')}
+            <button class="btn btn-primary plan-import-day" data-plan-import="${day}" ${!hasFood ? 'disabled' : ''}>${I.right} Importa ${label} nel diario</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+  return `
+    <div class="plan-top">
+      <button class="btn btn-primary plan-import-all" id="plan-import-all" ${!hasAnyData ? 'disabled' : ''}>
+        ${I.calendar || I.stack} Importa tutta la settimana
+      </button>
+      <div class="plan-import-note">Aggiunge solo nei pasti vuoti del diario, non sovrascrive nulla</div>
+      ${hasAnyData ? `<button class="btn btn-ghost plan-clear" id="plan-clear" style="margin-top:6px">${I.trash} Svuota piano</button>` : ''}
+    </div>
+    <div class="plan-list">
+      ${dayCards}
+    </div>
+  `;
+}
+
+/* Importa un singolo giorno del piano nel diario reale.
+   Regola: aggiunge solo nei pasti VUOTI del diario (non sovrascrive). */
+async function importPlanDayToDiary(planDay) {
+  const planData = state.plan[planDay];
+  if (!planData) return { added: 0, skipped: 0 };
+  // Calcola la data ISO del giorno target: prendi il giorno corrente di questa settimana
+  const monday = getMondayOfWeek(state.date || todayISO());
+  const dayIndex = PLAN_DAYS.indexOf(planDay);
+  const targetDate = shiftDate(monday, dayIndex);
+  const dayKey = `diary:${state.user.userId}:${targetDate}`;
+  // Carica il diario del giorno target
+  let day = await sg(dayKey);
+  if (!day) day = emptyDiary();
+  let added = 0, skipped = 0;
+  for (const mealKey of Object.keys(planData)) {
+    const planItems = planData[mealKey] || [];
+    if (planItems.length === 0) continue;
+    const existingItems = day[mealKey] || [];
+    if (existingItems.length > 0) {
+      // Il pasto ha già cibo: skippa (non sovrascrivere)
+      skipped += planItems.length;
+      continue;
+    }
+    // Il pasto è vuoto: copia gli alimenti (con nuovi id)
+    day[mealKey] = planItems.map(it => ({ ...it, id: uid() }));
+    added += planItems.length;
+  }
+  await ss(dayKey, day);
+  // Se stiamo guardando quel giorno, ricarica il diario per aggiornare la vista
+  if (state.date === targetDate) {
+    state.diary = day;
+    state.diaryDate = targetDate;
+  }
+  scheduleCloudAutoSync();
+  return { added, skipped, targetDate };
+}
+
+
 function renderSearch() {
   let content = '';
   if (state.searchState === 'loading') content = `<div class="spinner"></div>`;
@@ -4968,7 +5269,7 @@ function closeSheet() {
 }
 
 /* ─── ADD FOOD SHEET ───────────────────────────────────── */
-async function openAddFood(food, defaultMeal = 'breakfast') {
+async function openAddFood(food, defaultMeal = 'breakfast', planDay = null) {
   // Recupera l'ultima quantità usata per questo alimento (default 100g)
   const rememberedGrams = await getRememberedGrams(food, 100);
   state.addFood = {
@@ -4976,6 +5277,7 @@ async function openAddFood(food, defaultMeal = 'breakfast') {
     meal: defaultMeal,
     grams: rememberedGrams,
     unitMode: false,
+    planDay,
     // Quando si conferma, invece di chiudere tutto, ritorniamo qui (sheet padre)
     returnTo: state.addFood && state.addFood.returnTo ? state.addFood.returnTo : null,
   };
@@ -5179,41 +5481,51 @@ function bindAddFoodSheet() {
     if (g <= 0) { toast('Inserisci una quantità valida'); return; }
     const meal = state.addFood.meal;
     const returnTo = state.addFood.returnTo;
-    await addFoodToDiary(meal, state.addFood.food, g);
-    toast('Aggiunto al diario');
+    const planDay = state.addFood.planDay || null;
+    await addFoodToDiary(meal, state.addFood.food, g, planDay);
+    toast(planDay ? 'Aggiunto al piano' : 'Aggiunto al diario');
     // Se c'è un "ritorno" specifico, riapri quello sheet (resto sullo stesso menu)
     if (returnTo && returnTo.type === 'customPicker') {
       state.addFood = null;
-      openCustomPicker(returnTo.meal);
+      openCustomPicker(returnTo.meal, returnTo.planDay || planDay);
       return;
     }
     if (returnTo && returnTo.type === 'search') {
       state.addFood = null;
       closeSheet();
-      // Resta sulla tab search, ripulisce solo il campo
       const q = document.getElementById('q');
       if (q) { q.value = ''; q.focus(); }
       state.searchQuery = '';
       state.searchResults = [];
       state.searchState = 'idle';
+      // Se venivamo dal piano, torna al piano
+      if (planDay) {
+        state.tab = 'plan';
+        state.planExpanded = planDay;
+        state.searchOriginTab = null;
+        state.targetPlanDay = null;
+      }
       render();
       return;
     }
     if (returnTo && returnTo.type === 'templates') {
       state.addFood = null;
-      openTemplatesSheet(returnTo.meal);
+      openTemplatesSheet(returnTo.meal, '', planDay);
       return;
     }
-    // Fallback comportamento precedente: chiudi e vai a today
+    // Fallback: se venivamo dal piano, torna al piano; altrimenti today
     closeSheet();
-    if (state.tab !== 'today') { state.tab = 'today'; }
+    if (planDay) {
+      state.tab = 'plan';
+      state.planExpanded = planDay;
+    } else if (state.tab !== 'today') { state.tab = 'today'; }
     render();
   };
   document.getElementById('add-cancel').onclick = closeSheet;
 }
 
 /* ─── QUICK ADD (inserimento rapido macro) ────────────── */
-function openQuickAddSheet(meal) {
+function openQuickAddSheet(meal, planDay = null) {
   const mealLabels = { breakfast: 'Colazione', lunch: 'Pranzo', dinner: 'Cena', snack: 'Spuntino' };
   const html = `
     <h2 class="sheet-title">Inserimento rapido · ${esc(mealLabels[meal])}</h2>
@@ -5356,16 +5668,21 @@ function openQuickAddSheet(meal) {
       food.id = saved.id;
     }
 
-    await addFoodToDiary(meal, food, grams);
+    await addFoodToDiary(meal, food, grams, planDay);
     closeSheet();
     toast(`"${name}" aggiunto`);
+    if (planDay) {
+      state.tab = 'plan';
+      state.planExpanded = planDay;
+    }
     render();
   };
 }
 
 /* ─── EDIT ENTRY SHEET ─────────────────────────────────── */
-function openEditEntry(meal, entryId) {
-  const entry = (state.diary[meal] || []).find(e => e.id === entryId);
+function openEditEntry(meal, entryId, planDay = null) {
+  const store = getMealStore(planDay);
+  const entry = (store[meal] || []).find(e => e.id === entryId);
   if (!entry) return;
   const meals = [['breakfast','Colazione'],['lunch','Pranzo'],['dinner','Cena'],['snack','Spuntino']];
   const kcalPer100 = entry.kcal;
@@ -6452,7 +6769,7 @@ async function populateWeekSummaryCard() {
   }
 }
 
-function openTemplatesSheet(selectMealTarget = null, filter = '') {
+function openTemplatesSheet(selectMealTarget = null, filter = '', planDay = null) {
   const all = state.templates;
   const renderListData = (filterStr) => {
     const fLow = stripAccents((filterStr || '').trim().toLowerCase());
@@ -6524,9 +6841,13 @@ function openTemplatesSheet(selectMealTarget = null, filter = '') {
         el.onclick = async () => {
           const t = state.templates.find(x => x.id === el.dataset.pickTpl);
           if (!t) return;
-          await applyTemplate(t, selectMealTarget);
+          await applyTemplate(t, selectMealTarget, planDay);
           closeSheet();
           toast(`"${t.name}" aggiunto`);
+          if (planDay) {
+            state.tab = 'plan';
+            state.planExpanded = planDay;
+          }
           render();
         };
       });
@@ -6687,7 +7008,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.34.3';
+const APP_VERSION = '1.35.0';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -8526,7 +8847,7 @@ async function copyMealItemsFromDate(meal, items, mode) {
   return items.length;
 }
 /* ─── CUSTOM PICKER (for add-custom-to-meal) ─────────── */
-function openCustomPicker(meal) {
+function openCustomPicker(meal, planDay = null) {
   if (state.customFoods.length === 0) {
     toast('Nessun alimento salvato — creane uno dal profilo');
     return;
@@ -8571,8 +8892,8 @@ function openCustomPicker(meal) {
       el.onclick = () => {
         const f = state.customFoods.find(x => x.id === el.dataset.pickMy);
         // Imposta returnTo per tornare qui dopo l'aggiunta
-        state.addFood = { returnTo: { type: 'customPicker', meal } };
-        openAddFood({...f, _custom: true}, meal);
+        state.addFood = { returnTo: { type: 'customPicker', meal, planDay } };
+        openAddFood({...f, _custom: true}, meal, planDay);
       };
     });
   };
@@ -8879,6 +9200,68 @@ function bindApp() {
     populateWeekSummaryCard().catch(e => dlog('week summary FAIL: ' + e.message));
   }
 
+  // ── PIANO: handlers ──
+  if (state.tab === 'plan') {
+    // Toggle accordion di un giorno
+    document.querySelectorAll('[data-plan-toggle]').forEach(el => {
+      el.onclick = () => {
+        const day = el.dataset.planToggle;
+        state.planExpanded = (state.planExpanded === day) ? null : day;
+        render();
+      };
+    });
+    // Importa singolo giorno
+    document.querySelectorAll('[data-plan-import]').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const day = btn.dataset.planImport;
+        const label = PLAN_DAY_LABELS[day];
+        if (!confirm(`Importare ${label} nel diario?\n\nAggiunge solo nei pasti vuoti. Non sovrascrive.`)) return;
+        const res = await importPlanDayToDiary(day);
+        if (res.added === 0 && res.skipped === 0) {
+          toast('Piano vuoto per questo giorno');
+        } else if (res.skipped > 0) {
+          toast(`${res.added} aggiunti · ${res.skipped} saltati (pasti già pieni)`);
+        } else {
+          toast(`${res.added} aliment${res.added === 1 ? 'o' : 'i'} aggiunti al diario`);
+        }
+      };
+    });
+    // Importa tutta la settimana
+    const importAllBtn = document.getElementById('plan-import-all');
+    if (importAllBtn) {
+      importAllBtn.onclick = async () => {
+        if (!confirm('Importare tutta la settimana nel diario?\n\nAggiunge solo nei pasti vuoti. Non sovrascrive.')) return;
+        let totalAdded = 0, totalSkipped = 0;
+        for (const day of PLAN_DAYS) {
+          if (planDayCount(day) === 0) continue;
+          const res = await importPlanDayToDiary(day);
+          totalAdded += res.added;
+          totalSkipped += res.skipped;
+        }
+        if (totalAdded === 0 && totalSkipped === 0) {
+          toast('Piano vuoto');
+        } else if (totalSkipped > 0) {
+          toast(`${totalAdded} aggiunti · ${totalSkipped} saltati (già pieni)`);
+        } else {
+          toast(`${totalAdded} aliment${totalAdded === 1 ? 'o' : 'i'} aggiunti alla settimana`);
+        }
+      };
+    }
+    // Svuota piano
+    const clearBtn = document.getElementById('plan-clear');
+    if (clearBtn) {
+      clearBtn.onclick = () => {
+        if (!confirm('Svuotare tutto il piano settimanale?\n\nGli alimenti pianificati verranno rimossi. Il diario reale non viene toccato.')) return;
+        state.plan = {};
+        for (const d of PLAN_DAYS) state.plan[d] = planEmptyDay();
+        savePlan();
+        toast('Piano svuotato');
+        render();
+      };
+    }
+  }
+
   // Auto-focus search input quando si è nella tab Cerca (apre tastiera automaticamente)
   if (state.tab === 'search') {
     const qInp = document.getElementById('q');
@@ -8893,7 +9276,8 @@ function bindApp() {
     b.onclick = async (e) => {
       e.stopPropagation();
       const [meal, id] = b.dataset.del.split(':');
-      await removeFromDiary(meal, id);
+      const planDay = b.dataset.planDay || null;
+      await removeFromDiary(meal, id, planDay);
       render();
     };
   });
@@ -8902,7 +9286,8 @@ function bindApp() {
   document.querySelectorAll('[data-edit]').forEach(row => {
     row.onclick = () => {
       const [meal, id] = row.dataset.edit.split(':');
-      openEditEntry(meal, id);
+      const planDay = row.dataset.planDay || null;
+      openEditEntry(meal, id, planDay);
     };
   });
 
@@ -9001,6 +9386,9 @@ function bindApp() {
   document.querySelectorAll('[data-add-search]').forEach(b => {
     b.onclick = () => {
       state.targetMeal = b.dataset.addSearch;
+      const planDay = b.dataset.planDay || null;
+      // Se siamo nel piano, memorizza il contesto (usato in openAddFood)
+      state.targetPlanDay = planDay;
       // Ricorda da dove veniamo per il bottone "Indietro"
       state.searchOriginTab = state.tab;
       // Reset ricerca per non ricordare la query precedente
@@ -9009,7 +9397,6 @@ function bindApp() {
       state.searchTemplateResults = [];
       state.searchState = 'idle';
       state.tab = 'search';
-      // Carica i più usati in background
       getMostUsedFoods(8).then(list => {
         state.mostUsedFoods = list;
         if (state.tab === 'search' && !state.searchQuery) render();
@@ -9019,13 +9406,22 @@ function bindApp() {
     };
   });
   document.querySelectorAll('[data-add-quick]').forEach(b => {
-    b.onclick = () => openQuickAddSheet(b.dataset.addQuick);
+    b.onclick = () => {
+      const planDay = b.dataset.planDay || null;
+      openQuickAddSheet(b.dataset.addQuick, planDay);
+    };
   });
   document.querySelectorAll('[data-add-template]').forEach(b => {
-    b.onclick = () => openTemplatesSheet(b.dataset.addTemplate);
+    b.onclick = () => {
+      const planDay = b.dataset.planDay || null;
+      openTemplatesSheet(b.dataset.addTemplate, '', planDay);
+    };
   });
   document.querySelectorAll('[data-add-custom]').forEach(b => {
-    b.onclick = () => openCustomPicker(b.dataset.addCustom);
+    b.onclick = () => {
+      const planDay = b.dataset.planDay || null;
+      openCustomPicker(b.dataset.addCustom, planDay);
+    };
   });
 
   // search input
@@ -9115,8 +9511,9 @@ function bindSearchResults() {
     el.onclick = () => {
       const f = state.searchResults.find(x => String(x.id) === el.dataset.pick);
       if (f) {
+        const planDay = state.targetPlanDay || null;
         state.addFood = { returnTo: { type: 'search' } };
-        openAddFood(f, state.targetMeal);
+        openAddFood(f, state.targetMeal, planDay);
       }
     };
   });
@@ -9125,8 +9522,9 @@ function bindSearchResults() {
     el.onclick = () => {
       const f = (state.mostUsedFoods || []).find(x => String(x.id) === el.dataset.pickMu);
       if (f) {
+        const planDay = state.targetPlanDay || null;
         state.addFood = { returnTo: { type: 'search' } };
-        openAddFood(f, state.targetMeal);
+        openAddFood(f, state.targetMeal, planDay);
       }
     };
   });
@@ -9134,10 +9532,17 @@ function bindSearchResults() {
     el.onclick = async () => {
       const t = (state.searchTemplateResults || []).find(x => x.id === el.dataset.pickTpl);
       if (!t) return;
-      await applyTemplate(t, state.targetMeal);
-      toast(`"${t.name}" aggiunto a ${({breakfast:'Colazione',lunch:'Pranzo',dinner:'Cena',snack:'Spuntino'})[state.targetMeal] || 'pasto'}`);
-      // Torna a Oggi per vedere il risultato
-      state.tab = 'today';
+      const planDay = state.targetPlanDay || null;
+      await applyTemplate(t, state.targetMeal, planDay);
+      toast(`"${t.name}" aggiunto`);
+      if (planDay) {
+        state.tab = 'plan';
+        state.planExpanded = planDay;
+        state.searchOriginTab = null;
+        state.targetPlanDay = null;
+      } else {
+        state.tab = 'today';
+      }
       render();
     };
   });
