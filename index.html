@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.35.1 -->
+<!-- NUTRILOG_VERSION: 1.36.0 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -259,14 +259,15 @@
      DASHBOARD RING
      ═══════════════════════════════════════════════════ */
   .ring-wrap {
+    --ring-size: 124px;
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
-    margin: 0 auto 8px;
-    width: 200px; height: 200px;
+    margin: 0 auto 6px;
+    width: var(--ring-size); height: var(--ring-size);
   }
-  .ring-wrap svg { transform: rotate(-90deg); overflow: visible; }
+  .ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
   .ring-bg { stroke: var(--surface-3); }
   .ring-fg {
     stroke: var(--accent);
@@ -291,16 +292,18 @@
     pointer-events: none;
   }
   .ring-value {
-    font-size: 44px;
+    font-size: calc(var(--ring-size) * 0.225);
     font-weight: 700;
     letter-spacing: -0.03em;
     line-height: 1;
   }
   .ring-label {
-    font-size: 10.5px;
+    font-size: calc(var(--ring-size) * 0.066);
     color: var(--text-2);
-    margin-top: 6px;
-    letter-spacing: 0.08em;
+    margin: calc(var(--ring-size) * 0.03) auto 0;
+    max-width: calc(var(--ring-size) * 0.62);
+    line-height: 1.25;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     font-weight: 500;
   }
@@ -400,6 +403,206 @@
   .mw-footer-delta.over { color: var(--danger); }
   .mw-footer-delta.under { color: var(--accent); }
   .mw-footer-delta.ok { color: var(--accent); }
+
+  /* ═══════════════════════════════════════════════════
+     PESO — layout Diario a due colonne + sotto-sezione
+     ═══════════════════════════════════════════════════ */
+  .dash-duo {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    margin: 0 var(--pad-lg) 8px;
+    align-items: stretch;
+  }
+  .dash-duo.solo { grid-template-columns: minmax(0, 1fr); }
+  .dash-duo > .card { margin: 0; min-width: 0; }
+  /* Adattamento della card kcal alla colonna dimezzata */
+  .dash-duo .mini-week { margin-top: 8px; padding-top: 8px; }
+  .dash-duo .mw-bars { gap: 3px; }
+  .dash-duo .mwb-bar-wrap { height: 26px; }
+  .dash-duo .mwb-letter { font-size: 9px; letter-spacing: 0; }
+  .dash-duo .mw-footer {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    font-size: 10px;
+    line-height: 1.25;
+  }
+  .dash-duo .mw-footer-sep { display: none; }
+
+  /* Riquadro Peso */
+  .pw-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .pw-tile-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .pw-tile-title {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--text-3);
+  }
+  .pw-tile-pct {
+    font-size: 10.5px; font-weight: 600; color: var(--text-2);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .pw-tile-pct small { font-size: 8.5px; font-weight: 500; color: var(--text-3); letter-spacing: 0.04em; }
+  .pw-tile-val { display: flex; align-items: baseline; justify-content: center; gap: 3px; margin-top: 4px; }
+  .pw-tile-num {
+    font-size: 38px; font-weight: 700; letter-spacing: -0.03em; line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .pw-tile-u { font-size: 13px; font-weight: 500; color: var(--text-2); }
+  .pw-tile-cap {
+    text-align: center; font-size: 8.5px; font-weight: 500; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--text-3); margin-top: -2px;
+  }
+  .pw-tile-cap.dirty { color: var(--accent); }
+  .pw-spark-wrap { position: relative; flex: 1; min-height: 40px; margin: 2px 2px 0; }
+  .pw-spark { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .pw-spark-dot {
+    position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
+    border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 6px rgba(198, 255, 0, 0.5);
+  }
+  .pw-tile-btns { display: flex; gap: 5px; }
+  .pw-tbtn {
+    flex: 0 0 34px; height: 34px; border-radius: 10px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text); font-size: 20px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    touch-action: manipulation; cursor: pointer;
+  }
+  .pw-tbtn:active { transform: scale(0.94); }
+  .pw-tsave {
+    flex: 1; min-width: 0; height: 34px; border-radius: 10px; border: 0;
+    background: var(--accent); color: var(--accent-text);
+    font-size: 13px; font-weight: 700; touch-action: manipulation; cursor: pointer;
+  }
+  .pw-tsave:active { transform: scale(0.97); }
+
+  /* Intestazione sotto-sezione */
+  .header.pw-header { justify-content: flex-start; gap: 14px; }
+  .pw-hicons { margin-left: auto; display: flex; gap: 2px; }
+  .pw-hbtn {
+    width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-2); border: 0; background: transparent; border-radius: 10px; cursor: pointer;
+    transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  }
+  .pw-hbtn:active { background: var(--surface-2); color: var(--accent); }
+  .pw-hbtn svg { width: 20px; height: 20px; }
+
+  /* Voci Inserisci / Storico / Grafico */
+  .pw-seg {
+    position: sticky; top: 0; z-index: 5; background: var(--bg);
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+    padding: 4px var(--pad-lg) 10px;
+  }
+  .pw-segbtn {
+    padding: 9px 0; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .pw-segbtn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .pw-body { padding: 4px var(--pad-lg) 28px; }
+  .pw-empty { color: var(--text-3); text-align: center; margin-top: 12vh; font-size: 14px; }
+
+  /* Inserisci */
+  .pw-date { margin-bottom: 10px; }
+  .pw-dow { font-size: 14px; color: var(--text-2); text-transform: capitalize; }
+  .pw-day { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; text-transform: capitalize; }
+  .pw-days { display: flex; gap: 5px; }
+  .pw-dy {
+    flex: 1; min-width: 0; padding: 7px 0 8px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--surface); text-align: center; font-size: 10.5px; color: var(--text-2);
+    position: relative; cursor: pointer;
+  }
+  .pw-dy b { display: block; font-size: 15px; color: var(--text); font-weight: 600; }
+  .pw-dy.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .pw-dy.on b { color: var(--accent-text); }
+  .pw-dy.has::after {
+    content: ''; position: absolute; bottom: 3px; left: 50%; width: 4px; height: 4px;
+    margin-left: -2px; border-radius: 50%; background: var(--accent);
+  }
+  .pw-dy.on.has::after { background: var(--accent-text); }
+  .pw-dial {
+    position: relative; width: min(72vw, 270px); margin: 14px auto 8px;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+  }
+  .pw-dial svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .pw-trk { stroke: var(--surface-3); }
+  .pw-ctr {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    pointer-events: none; padding-bottom: 6%;
+  }
+  .pw-ctr input { pointer-events: auto; }
+  .pw-kg { display: flex; align-items: baseline; justify-content: center; }
+  .pw-winput {
+    width: 4.4ch; font-size: 58px; font-weight: 700; letter-spacing: -0.04em; text-align: center;
+    background: none; border: 0; color: var(--text); font-variant-numeric: tabular-nums;
+    padding: 0; outline: 0; font-family: inherit;
+  }
+  .pw-winput:focus { color: var(--accent); }
+  .pw-u { font-size: 22px; color: var(--text-2); margin-left: 2px; }
+  .pw-step {
+    position: absolute; bottom: 3%; width: 46px; height: 46px; border-radius: 50%;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    font-size: 26px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+    touch-action: manipulation; cursor: pointer;
+  }
+  .pw-step:active { transform: scale(0.94); }
+  .pw-dm { left: 24%; }
+  .pw-dp { right: 24%; }
+  .pw-save {
+    display: block; width: 100%; padding: 16px; border-radius: 16px; border: 0;
+    background: var(--accent); color: var(--accent-text); font-size: 17px; font-weight: 700; cursor: pointer;
+  }
+  .pw-save:active { transform: scale(0.98); }
+  .pw-hint { text-align: center; color: var(--text-2); margin-top: 12px; min-height: 20px; font-size: 14px; }
+  .pw-del {
+    display: none; margin: 2px auto 0; color: var(--text-3); font-size: 14px; padding: 8px 14px;
+    background: none; border: 0; cursor: pointer;
+  }
+
+  /* Storico */
+  .pw-wk {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px 12px 12px; margin-bottom: 10px;
+  }
+  .pw-wh { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; }
+  .pw-wh > b { font-size: 14px; }
+  .pw-avg { font-size: 24px; font-weight: 700; line-height: 1.1; text-align: right; font-variant-numeric: tabular-nums; }
+  .pw-avg small { font-size: 14px; color: var(--text-2); font-weight: 400; }
+  .pw-pct { font-size: 13px; color: var(--text-2); margin-top: 2px; text-align: right; }
+  .pw-dg { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; align-items: end; text-align: center; }
+  .pw-dc { display: flex; flex-direction: column; align-items: center; gap: 4px; justify-content: flex-end; }
+  .pw-dc i { display: block; }
+  .pw-dv { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pw-dv.e { color: var(--text-3); font-weight: 400; }
+  .pw-bar { width: 100%; border-radius: 4px; background: var(--text-3); opacity: 0.8; }
+  .pw-dl { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; text-align: center; margin-top: 6px; font-size: 11px; color: var(--text-3); }
+
+  /* Grafico */
+  .pw-rng { display: flex; gap: 6px; margin-bottom: 14px; }
+  .pw-rng button {
+    flex: 1; padding: 9px 0; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-2); font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .pw-rng button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .pw-rd { display: flex; align-items: baseline; justify-content: space-between; margin: 0 2px 8px; }
+  .pw-rd b { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pw-rd small { font-size: 15px; color: var(--text-2); font-weight: 400; }
+  .pw-rd span { color: var(--text-2); font-size: 14px; text-transform: capitalize; }
+  .pw-csvg {
+    display: block; width: 100%; height: auto; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 16px; touch-action: pan-y; cursor: pointer;
+  }
+  .pw-sum { display: flex; justify-content: space-between; margin-top: 12px; color: var(--text-2); font-size: 13px; }
+
 
   /* ─── PIANO SETTIMANALE ─────────────────────── */
   .plan-top {
@@ -711,31 +914,20 @@
   }
   /* Quando la card ha una scala personalizzata, scaliamo i contenuti
      proporzionalmente. Usiamo calc() su tutte le dimensioni interne. */
+  /* Card kcal in colonna dimezzata (accanto al riquadro Peso): l'anello è
+     parametrico (--ring-size) e scala con --card-scale come prima. */
   .card-resizable[data-card-id="kcal"] {
-    padding-top: calc(10px * var(--card-scale));
-    padding-bottom: calc(22px * var(--card-scale));
+    padding: calc(10px * var(--card-scale)) 10px calc(12px * var(--card-scale));
   }
   .card-resizable[data-card-id="kcal"] .ring-wrap {
-    width: calc(200px * var(--card-scale)) !important;
-    height: calc(200px * var(--card-scale)) !important;
-    margin: calc(4px * var(--card-scale)) auto calc(12px * var(--card-scale)) !important;
-  }
-  .card-resizable[data-card-id="kcal"] .ring-wrap svg {
-    width: calc(200px * var(--card-scale)) !important;
-    height: calc(200px * var(--card-scale)) !important;
-  }
-  .card-resizable[data-card-id="kcal"] .ring-value {
-    font-size: calc(44px * var(--card-scale));
-  }
-  .card-resizable[data-card-id="kcal"] .ring-label {
-    font-size: calc(10.5px * var(--card-scale));
-    margin-top: calc(6px * var(--card-scale));
+    --ring-size: calc(124px * var(--card-scale));
   }
   .card-resizable[data-card-id="kcal"] .ring-sub .n {
-    font-size: calc(15px * var(--card-scale));
+    font-size: calc(14px * var(--card-scale));
   }
   .card-resizable[data-card-id="kcal"] .ring-sub .l {
-    font-size: calc(10px * var(--card-scale));
+    font-size: calc(8px * var(--card-scale));
+    letter-spacing: 0.06em;
   }
   .card-resizable[data-card-id="macro"] .macro-row {
     padding: calc(10px * var(--card-scale)) 0;
@@ -1994,6 +2186,7 @@
 /* ─── ICONS ──────────────────────────────────────────────── */
 const I = {
   leaf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 019.8 6.1C15.5 5 17 4.48 19.2 2.3c1.7 8.7.5 15.1-3.2 18.7-2 2-5 3-7 3-2.5 0-4-1-4-3s2-4 4-4c2 0 3-1 4-2 1-1 1-3 0-4"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></svg>',
+  download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>',
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M5 10v10h14V10"/></svg>',
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
@@ -2051,6 +2244,7 @@ const state = {
     friday: {}, saturday: {}, sunday: {},
   },
   planExpanded: null,  // giorno attualmente espanso nel Piano ('monday', 'tuesday', ecc. o null)
+  pesoView: null,      // sotto-sezione Peso aperta nel Diario: null | 'inserisci' | 'storico' | 'grafico'
 };
 
 /* ─── UTILS ──────────────────────────────────────────────── */
@@ -4285,6 +4479,500 @@ async function loadAll() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   PESO — modulo integrato (ex app "Peso")
+   Dati SEPARATI da NutriLog: localStorage "pesate-v1" (pesate) e
+   "pesate-cfg" (token + id del Gist). Solo kg, niente notifiche.
+   Tutte le funzioni, gli id e le classi del modulo hanno prefisso pw.
+   ═══════════════════════════════════════════════════════════ */
+const PW_K = 'pesate-v1', PW_C = 'pesate-cfg';
+let pwData = {}, pwCfg = {};
+try { pwData = JSON.parse(localStorage.getItem(PW_K) || '{}') || {}; } catch (_) { pwData = {}; }
+try { pwCfg = JSON.parse(localStorage.getItem(PW_C) || '{}') || {}; } catch (_) { pwCfg = {}; }
+
+const pwIso = d => new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+const pwToday = () => pwIso(new Date());
+const pwFmt = n => n.toFixed(1).replace('.', ',');
+const pwDs = () => Object.keys(pwData).sort();
+const pwIt = (s, o) => new Date(s + 'T12:00:00').toLocaleDateString('it-IT', o);
+const pwClamp = v => Math.round(Math.min(300, Math.max(20, v)) * 10) / 10;
+function pwMon(s) { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return pwIso(d); }
+function pwPctStr(p) {
+  if (p == null) return '';
+  const a = Math.abs(p).toFixed(1).replace('.', ',');
+  return (Math.abs(p) < 0.05 ? '' : (p > 0 ? '+' : '−')) + a + '%';
+}
+function pwSanitize(o) {
+  const out = {};
+  if (o && typeof o === 'object') {
+    for (const k of Object.keys(o)) {
+      const v = Number(o[k]);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(k) && isFinite(v) && v >= 20 && v <= 300) out[k] = v;
+    }
+  }
+  return out;
+}
+pwData = pwSanitize(pwData);
+function pwWeeks() {
+  const m = {};
+  pwDs().forEach(d => { const k = pwMon(d); (m[k] = m[k] || []).push([d, pwData[d]]); });
+  let pr = null;
+  return Object.keys(m).sort().map(k => {
+    const a = m[k].reduce((x, y) => x + y[1], 0) / m[k].length;
+    const o = { k, a, n: m[k].length, days: m[k], pct: pr == null ? null : (a - pr) / pr * 100 };
+    pr = a;
+    return o;
+  }).reverse();
+}
+function pwLast() { const k = pwDs(); return k.length ? pwData[k[k.length - 1]] : null; }
+function pwPersist() { try { localStorage.setItem(PW_K, JSON.stringify(pwData)); } catch (e) { dlog('pw persist FAIL: ' + e.message); } }
+function pwPersistCfg() { try { localStorage.setItem(PW_C, JSON.stringify(pwCfg)); } catch (_) {} }
+const pwEl = id => document.getElementById(id);
+
+/* ─── Stato del modulo ─── */
+let pwSel = pwToday();       // giorno selezionato in "Inserisci"
+let pwW = 75;                // valore nel quadrante
+let pwBase = 75;             // centro della finestra ±5 kg
+let pwDc = 0;                // timer conferma "Elimina pesata"
+let pwRange = 30;            // filtro grafico (giorni, 0 = tutto)
+let pwTileW = 75;            // valore del riquadro nel Diario
+let pwTileDirty = false;     // il riquadro ha un valore non ancora salvato
+let pwLibsP = null;          // promise caricamento librerie Excel
+{
+  const t = pwToday();
+  pwW = pwData[t] != null ? pwData[t] : (pwLast() != null ? pwLast() : 75);
+  pwBase = Math.round(pwW);
+  pwTileW = pwW;
+}
+
+/* ═══ RIQUADRO NEL DIARIO ═══ */
+function pwSpark() {
+  const P = pwDs().slice(-10).map(d => [d, pwData[d]]);
+  const W = 120, H = 34, p = 4;
+  if (P.length < 2) {
+    return `<div class="pw-spark-wrap"><svg class="pw-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><line x1="${p}" y1="${H / 2}" x2="${W - p}" y2="${H / 2}" stroke="var(--border-strong)" stroke-width="1.5" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/></svg></div>`;
+  }
+  const v = P.map(x => x[1]), mn = Math.min(...v), mx = Math.max(...v);
+  const t0 = +new Date(P[0][0]), t1 = +new Date(P[P.length - 1][0]);
+  const X = d => p + (t1 === t0 ? 0 : (+new Date(d) - t0) / (t1 - t0)) * (W - 2 * p);
+  const Y = y => p + (mx === mn ? 0.5 : (mx - y) / (mx - mn)) * (H - 2 * p);
+  const pts = P.map(q => X(q[0]).toFixed(1) + ',' + Y(q[1]).toFixed(1)).join(' ');
+  const lx = (X(P[P.length - 1][0]) / W * 100).toFixed(1), ly = (Y(P[P.length - 1][1]) / H * 100).toFixed(1);
+  return `<div class="pw-spark-wrap"><svg class="pw-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg><span class="pw-spark-dot" style="left:${lx}%;top:${ly}%"></span></div>`;
+}
+function pwRenderTile() {
+  const t = pwToday();
+  if (!pwTileDirty) pwTileW = pwData[t] != null ? pwData[t] : (pwLast() != null ? pwLast() : 75);
+  const cur = pwWeeks().find(x => x.k === pwMon(t));
+  const pct = cur && cur.pct != null ? pwPctStr(cur.pct) : '–';
+  const cap = pwTileDirty ? 'non salvato' : (pwData[t] != null ? 'oggi' : 'da registrare');
+  return `<div class="card pw-tile" id="pw-tile" role="button" tabindex="0" aria-label="Apri la sezione Peso">
+    <div class="pw-tile-head"><span class="pw-tile-title">Peso</span><span class="pw-tile-pct">${pct} <small>sett.</small></span></div>
+    <div class="pw-tile-val"><span class="pw-tile-num" id="pw-tile-num">${pwFmt(pwTileW)}</span><span class="pw-tile-u">kg</span></div>
+    <div class="pw-tile-cap${pwTileDirty ? ' dirty' : ''}" id="pw-tile-cap">${cap}</div>
+    ${pwSpark()}
+    <div class="pw-tile-btns">
+      <button class="pw-tbtn" type="button" data-pw-tm aria-label="Meno 0,1">−</button>
+      <button class="pw-tbtn" type="button" data-pw-tp aria-label="Più 0,1">+</button>
+      <button class="pw-tsave" type="button" data-pw-ts>Salva</button>
+    </div>
+  </div>`;
+}
+function pwTileSet(v) {
+  pwTileW = pwClamp(v);
+  pwTileDirty = true;
+  const n = pwEl('pw-tile-num'), c = pwEl('pw-tile-cap');
+  if (n) n.textContent = pwFmt(pwTileW);
+  if (c) { c.textContent = 'non salvato'; c.classList.add('dirty'); }
+}
+function pwTileRefresh() {
+  const t = pwEl('pw-tile');
+  if (!t) return;
+  t.outerHTML = pwRenderTile();
+  pwBindTile();
+}
+function pwBindTile() {
+  const tile = pwEl('pw-tile');
+  if (!tile) return;
+  tile.onclick = (e) => { if (e.target.closest('button')) return; pwOpen('inserisci'); };
+  tile.onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === tile) { e.preventDefault(); pwOpen('inserisci'); } };
+  const m = tile.querySelector('[data-pw-tm]'), p = tile.querySelector('[data-pw-tp]'), s = tile.querySelector('[data-pw-ts]');
+  m.onclick = (e) => { e.stopPropagation(); pwTileSet(pwTileW - 0.1); };
+  p.onclick = (e) => { e.stopPropagation(); pwTileSet(pwTileW + 0.1); };
+  s.onclick = async (e) => {
+    e.stopPropagation();
+    pwData[pwToday()] = pwTileW;
+    pwPersist();
+    pwTileDirty = false;
+    pwTileRefresh();
+    toast('Pesata salvata');
+    await pwBackup();
+  };
+}
+
+/* ═══ SOTTO-SEZIONE PESO ═══ */
+function pwOpen(view) {
+  state.pesoView = view || 'inserisci';
+  pwSel = pwToday();
+  pwW = pwData[pwSel] != null ? pwData[pwSel] : (pwLast() != null ? pwLast() : 75);
+  pwBase = Math.round(pwW);
+  render();
+  pwLoadLibs().catch(() => {}); // precarica le librerie Excel, così l'export è immediato
+}
+function pwClose() {
+  if (pwDc) { clearTimeout(pwDc); pwDc = 0; }
+  state.pesoView = null;
+  render();
+}
+function pwRenderHeader() {
+  return `<div class="header pw-header">
+    <button class="header-back-btn" id="pw-back" type="button">${I.left}<span>Diario</span></button>
+    <h1>Peso</h1>
+    <div class="pw-hicons">
+      <button class="pw-hbtn" id="pw-xls" type="button" aria-label="Esporta in Excel">${I.download}</button>
+      <button class="pw-hbtn" id="pw-gear" type="button" aria-label="Backup su GitHub">${I.settings}</button>
+    </div>
+  </div>`;
+}
+function pwDaysRowHtml() {
+  return [...Array(8)].map((_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (7 - i));
+    const k = pwIso(d);
+    return `<button class="pw-dy${k === pwSel ? ' on' : ''}${pwData[k] != null ? ' has' : ''}" type="button" data-pw-day="${k}">${i === 7 ? 'oggi' : pwIt(k, { weekday: 'short' }).replace('.', '')}<b>${d.getDate()}</b></button>`;
+  }).join('');
+}
+function pwHintText() {
+  return pwData[pwSel] != null ? `${pwSel === pwToday() ? 'Oggi' : 'Registrata'}: ${pwFmt(pwData[pwSel])} kg` : '';
+}
+function pwViewInserisci() {
+  return `<div class="pw-date"><div class="pw-dow" id="pw-dow">${esc(pwIt(pwSel, { weekday: 'long' }))}</div><div class="pw-day" id="pw-day">${esc(pwIt(pwSel, { day: 'numeric', month: 'long' }))}</div></div>
+  <div class="pw-days" id="pw-days">${pwDaysRowHtml()}</div>
+  <div class="pw-dial" id="pw-dial">
+    <svg viewBox="0 0 260 260" aria-hidden="true">
+      <g transform="rotate(135 130 130)" fill="none" stroke-linecap="round" stroke-width="14">
+        <circle cx="130" cy="130" r="108" class="pw-trk" stroke-dasharray="508.9 678.6"/>
+        <circle id="pw-prog" cx="130" cy="130" r="108" stroke="var(--accent)" stroke-dasharray="0 678.6"/>
+      </g>
+      <circle id="pw-knob" r="15" cx="130" cy="130" fill="var(--accent)" stroke="var(--bg)" stroke-width="4"/>
+    </svg>
+    <div class="pw-ctr"><div class="pw-kg"><input id="pw-w" class="pw-winput" inputmode="decimal" autocomplete="off" aria-label="Peso in kg"><span class="pw-u">kg</span></div></div>
+    <button class="pw-step pw-dm" id="pw-m" type="button" aria-label="Meno 0,1">−</button>
+    <button class="pw-step pw-dp" id="pw-p" type="button" aria-label="Più 0,1">+</button>
+  </div>
+  <button class="pw-save" id="pw-save" type="button">Salva pesata</button>
+  <div class="pw-hint" id="pw-hint">${esc(pwHintText())}</div>
+  <button class="pw-del" id="pw-del" type="button" style="display:${pwData[pwSel] != null ? 'block' : 'none'}">Elimina pesata</button>`;
+}
+function pwViewStorico() {
+  const W = pwWeeks();
+  if (!W.length) return '<p class="pw-empty">Nessuna pesata ancora.</p>';
+  const v = pwDs().map(d => pwData[d]), mn = Math.min(...v) - 0.2, mx = Math.max(...v) + 0.2;
+  const Hh = x => Math.round(6 + (x - mn) / ((mx - mn) || 1) * 40);
+  const L = ['L', 'M', 'M', 'G', 'V', 'S', 'D'], sh = { day: 'numeric', month: 'short' };
+  return W.map(x => {
+    const a = new Date(x.k + 'T12:00:00'), b = new Date(a); b.setDate(a.getDate() + 6);
+    const rg = a.getMonth() === b.getMonth() ? a.getDate() + '–' + pwIt(pwIso(b), sh) : pwIt(x.k, sh) + '–' + pwIt(pwIso(b), sh);
+    const cols = [...Array(7)].map((_, i) => {
+      const d = new Date(a); d.setDate(a.getDate() + i);
+      const y = pwData[pwIso(d)];
+      return y == null
+        ? '<div class="pw-dc"><span class="pw-dv e">–</span><i style="height:6px"></i></div>'
+        : `<div class="pw-dc"><span class="pw-dv">${pwFmt(y)}</span><i class="pw-bar" style="height:${Hh(y)}px"></i></div>`;
+    }).join('');
+    return `<div class="pw-wk"><div class="pw-wh"><b>${rg}</b><div><div class="pw-avg">${pwFmt(x.a)} <small>kg</small></div><div class="pw-pct">${pwPctStr(x.pct)}</div></div></div><div class="pw-dg">${cols}</div><div class="pw-dl">${L.map(c => `<span>${c}</span>`).join('')}</div></div>`;
+  }).join('');
+}
+function pwViewGrafico() {
+  const R = [[7, 'Sett.'], [30, 'Mese'], [90, '3 mesi'], [365, 'Anno'], [0, 'Tutto']];
+  return `<div class="pw-rng" id="pw-rng">${R.map(([d, l]) => `<button type="button" data-pw-rng="${d}" class="${pwRange === d ? 'on' : ''}">${l}</button>`).join('')}</div><div id="pw-chart"></div>`;
+}
+function pwRenderView() {
+  const v = state.pesoView;
+  const seg = `<div class="pw-seg" role="tablist">${[['inserisci', 'Inserisci'], ['storico', 'Storico'], ['grafico', 'Grafico']].map(([k, l]) => `<button type="button" class="pw-segbtn${v === k ? ' on' : ''}" role="tab" data-pw-view="${k}">${l}</button>`).join('')}</div>`;
+  const body = v === 'storico' ? pwViewStorico() : (v === 'grafico' ? pwViewGrafico() : pwViewInserisci());
+  return `${seg}<div class="pw-body">${body}</div>`;
+}
+
+/* ─── Quadrante ─── */
+const PW_R = 108, PW_CX = 130, PW_CY = 130, PW_CC = 2 * Math.PI * PW_R;
+function pwDial() {
+  if (pwW < pwBase - 5 || pwW > pwBase + 5) pwBase = Math.round(pwW);
+  const f = (pwW - (pwBase - 5)) / 10, a = (-135 + f * 270) * Math.PI / 180;
+  const pr = pwEl('pw-prog'), kn = pwEl('pw-knob');
+  if (!pr || !kn) return;
+  pr.setAttribute('stroke-dasharray', (f * 0.75 * PW_CC) + ' ' + PW_CC);
+  kn.setAttribute('cx', PW_CX + PW_R * Math.sin(a));
+  kn.setAttribute('cy', PW_CY - PW_R * Math.cos(a));
+}
+function pwShow() { const i = pwEl('pw-w'); if (i) i.value = pwFmt(pwW); pwDial(); }
+function pwSet(v) { pwW = pwClamp(v); pwShow(); }
+function pwHint() {
+  const h = pwEl('pw-hint'), b = pwEl('pw-del');
+  if (h) h.textContent = pwHintText();
+  if (b) b.style.display = pwData[pwSel] != null ? 'block' : 'none';
+}
+function pwHead() {
+  if (pwDc) { clearTimeout(pwDc); pwDc = 0; const b = pwEl('pw-del'); if (b) b.textContent = 'Elimina pesata'; }
+  const a = pwEl('pw-dow'), d = pwEl('pw-day'), r = pwEl('pw-days');
+  if (a) a.textContent = pwIt(pwSel, { weekday: 'long' });
+  if (d) d.textContent = pwIt(pwSel, { day: 'numeric', month: 'long' });
+  if (r) r.innerHTML = pwDaysRowHtml();
+  pwHint();
+}
+function pwBindInserisci() {
+  const days = pwEl('pw-days');
+  days.onclick = (e) => {
+    const b = e.target.closest('.pw-dy');
+    if (!b) return;
+    pwSel = b.dataset.pwDay;
+    if (pwData[pwSel] != null) pwW = pwData[pwSel];
+    pwShow(); pwHead();
+  };
+  pwEl('pw-m').onclick = () => pwSet(pwW - 0.1);
+  pwEl('pw-p').onclick = () => pwSet(pwW + 0.1);
+  const inp = pwEl('pw-w');
+  inp.onchange = (e) => { const v = parseFloat(e.target.value.replace(',', '.')); isNaN(v) ? pwShow() : pwSet(v); };
+  inp.onfocus = (e) => e.target.select();
+  const dl = pwEl('pw-dial');
+  let drag = false;
+  const pt = (e) => {
+    const r = dl.getBoundingClientRect();
+    let t = Math.atan2(e.clientX - (r.left + r.width / 2), -(e.clientY - (r.top + r.height / 2))) * 180 / Math.PI;
+    t = Math.max(-135, Math.min(135, t));
+    pwSet(pwBase - 5 + (t + 135) / 270 * 10);
+  };
+  dl.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button,input')) return;
+    const r = dl.getBoundingClientRect();
+    if (Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)) / (r.width / 2) < 0.5) return;
+    drag = true; dl.setPointerCapture(e.pointerId); pt(e);
+  });
+  dl.addEventListener('pointermove', (e) => { if (drag) pt(e); });
+  ['pointerup', 'pointercancel'].forEach(n => dl.addEventListener(n, () => { drag = false; }));
+  pwEl('pw-save').onclick = async () => {
+    inp.blur();
+    pwData[pwSel] = pwW;
+    pwPersist();
+    if (pwSel === pwToday()) pwTileDirty = false;
+    pwHead();
+    toast(pwSel === pwToday() ? 'Pesata salvata' : 'Pesata del ' + pwIt(pwSel, { day: 'numeric', month: 'short' }) + ' salvata');
+    await pwBackup();
+  };
+  pwEl('pw-del').onclick = async () => {
+    if (pwData[pwSel] == null) return;
+    const b = pwEl('pw-del');
+    if (!pwDc) {
+      b.textContent = 'Tocca ancora per eliminare';
+      pwDc = setTimeout(() => { pwDc = 0; const x = pwEl('pw-del'); if (x) x.textContent = 'Elimina pesata'; }, 3500);
+      return;
+    }
+    clearTimeout(pwDc); pwDc = 0;
+    b.textContent = 'Elimina pesata';
+    delete pwData[pwSel];
+    pwPersist();
+    if (pwSel === pwToday()) pwTileDirty = false;
+    pwHead();
+    toast('Pesata eliminata');
+    await pwBackup();
+  };
+  pwShow();
+}
+
+/* ─── Grafico ─── */
+function pwChartDraw() {
+  const box = pwEl('pw-chart');
+  if (!box) return;
+  const lim = pwRange ? pwIso(new Date(Date.now() - pwRange * 864e5)) : '';
+  const P = pwDs().filter(d => d >= lim).map(d => [d, pwData[d]]);
+  if (P.length < 2) { box.innerHTML = '<p class="pw-empty">Servono almeno 2 pesate in questo periodo.</p>'; return; }
+  const W = 340, H = 210, pl = 14, pr = 14, pt = 16, pb = 16;
+  const v = P.map(p => p[1]), mn = Math.min(...v) - 0.3, mx = Math.max(...v) + 0.3;
+  const t0 = +new Date(P[0][0]), t1 = +new Date(P[P.length - 1][0]);
+  const X = d => pl + (t1 === t0 ? 0 : (+new Date(d) - t0) / (t1 - t0)) * (W - pl - pr);
+  const Y = y => pt + (mx - y) / (mx - mn) * (H - pt - pb);
+  const pts = P.map(p => X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1)).join(' ');
+  const rd = p => `<b>${pwFmt(p[1])} <small>kg</small></b><span>${pwIt(p[0], { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' })}</span>`;
+  const d1 = v[v.length - 1] - v[0];
+  const sd = { day: 'numeric', month: 'short', year: '2-digit' };
+  box.innerHTML = `<div class="pw-rd" id="pw-rd"></div>
+    <svg id="pw-cs" class="pw-csvg" viewBox="0 0 ${W} ${H}"><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/><line id="pw-cl" y1="${pt}" y2="${H - pb}" stroke="var(--text-3)" stroke-dasharray="3 3"/><circle id="pw-cc" r="6" fill="var(--accent)" stroke="var(--surface)" stroke-width="3"/></svg>
+    <div class="pw-sum"><span>Min ${pwFmt(Math.min(...v))}</span><span>Max ${pwFmt(Math.max(...v))}</span></div>
+    <div class="pw-sum"><span>${pwIt(P[0][0], sd)}</span><span>${(d1 > 0 ? '+' : '') + d1.toFixed(1).replace('.', ',')} kg</span><span>${pwIt(P[P.length - 1][0], sd)}</span></div>`;
+  const sv = pwEl('pw-cs');
+  const at = (p) => {
+    const x = X(p[0]), y = Y(p[1]);
+    pwEl('pw-cl').setAttribute('x1', x); pwEl('pw-cl').setAttribute('x2', x);
+    pwEl('pw-cc').setAttribute('cx', x); pwEl('pw-cc').setAttribute('cy', y);
+    pwEl('pw-rd').innerHTML = rd(p);
+  };
+  const mv = (e) => {
+    const r = sv.getBoundingClientRect(), vx = (e.clientX - r.left) / r.width * W;
+    at(P.reduce((a, p) => Math.abs(X(p[0]) - vx) < Math.abs(X(a[0]) - vx) ? p : a));
+  };
+  at(P[P.length - 1]);
+  sv.addEventListener('pointerdown', (e) => { sv.setPointerCapture(e.pointerId); mv(e); });
+  sv.addEventListener('pointermove', (e) => { if (e.buttons || e.pointerType === 'touch') mv(e); });
+}
+
+/* ─── Collegamenti della sotto-sezione ─── */
+function pwBindView() {
+  pwEl('pw-back').onclick = pwClose;
+  pwEl('pw-xls').onclick = pwExport;
+  pwEl('pw-gear').onclick = pwOpenSettings;
+  document.querySelectorAll('[data-pw-view]').forEach(b => {
+    b.onclick = () => { if (pwDc) { clearTimeout(pwDc); pwDc = 0; } state.pesoView = b.dataset.pwView; render(); };
+  });
+  if (state.pesoView === 'inserisci') pwBindInserisci();
+  if (state.pesoView === 'grafico') {
+    document.querySelectorAll('[data-pw-rng]').forEach(b => {
+      b.onclick = () => {
+        pwRange = +b.dataset.pwRng;
+        document.querySelectorAll('[data-pw-rng]').forEach(x => x.classList.toggle('on', x === b));
+        pwChartDraw();
+      };
+    });
+    pwChartDraw();
+  }
+  // Gesto indietro dal bordo sinistro (come freccia "Diario")
+  const screen = pwEl('screen');
+  if (screen) {
+    let sx = 0, sy = 0, cx = 0, on = false;
+    screen.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      if (t.clientX > 22) return;
+      sx = t.clientX; sy = t.clientY; cx = sx; on = true;
+    }, { passive: true });
+    screen.addEventListener('touchmove', (e) => {
+      if (!on) return;
+      cx = e.touches[0].clientX;
+      const dx = cx - sx, dy = Math.abs(e.touches[0].clientY - sy);
+      if (dy > Math.abs(dx) + 10) { on = false; screen.style.transform = ''; return; }
+      if (dx > 0) screen.style.transform = `translateX(${dx}px)`;
+    }, { passive: true });
+    screen.addEventListener('touchend', () => {
+      if (!on) return;
+      on = false;
+      if (cx - sx > 80) {
+        screen.style.transition = 'transform 200ms ease-out';
+        screen.style.transform = 'translateX(100%)';
+        setTimeout(pwClose, 200);
+      } else {
+        screen.style.transition = 'transform 180ms ease';
+        screen.style.transform = '';
+      }
+    });
+  }
+}
+
+/* ═══ BACKUP SU GIST SEGRETO ═══ */
+const pwGh = (p, o = {}) => fetch('https://api.github.com' + p, { ...o, headers: { Authorization: 'Bearer ' + pwCfg.token, Accept: 'application/vnd.github+json' } });
+async function pwBackup() {
+  if (!pwCfg.token) return;
+  try {
+    const c = JSON.stringify(pwData, null, 1);
+    const r = pwCfg.gist
+      ? await pwGh('/gists/' + pwCfg.gist, { method: 'PATCH', body: JSON.stringify({ files: { 'pesate.json': { content: c } } }) })
+      : await pwGh('/gists', { method: 'POST', body: JSON.stringify({ description: 'Pesate', public: false, files: { 'pesate.json': { content: c } } }) });
+    if (r.ok && !pwCfg.gist) { pwCfg.gist = (await r.json()).id; pwPersistCfg(); }
+    toast(r.ok ? 'Backup su GitHub fatto' : 'Backup fallito (' + r.status + '). Controlla il token');
+  } catch (_) { toast('Backup non riuscito. Sei offline?'); }
+}
+function pwOpenSettings() {
+  openSheet(`
+    <h2 class="sheet-title">Backup peso</h2>
+    <p class="sheet-sub">Le pesate vengono salvate in un Gist segreto su GitHub a ogni salvataggio. Serve un token con il solo permesso "gist".</p>
+    <div class="field"><label>Token GitHub (solo permesso gist)</label>
+      <input class="input" id="pw-tok" type="password" autocapitalize="off" autocomplete="off" style="font-size:16px" value="${esc(pwCfg.token || '')}"></div>
+    <button class="btn btn-primary" id="pw-ssave" type="button">Salva impostazioni</button>
+    <button class="btn btn-ghost" id="pw-rest" type="button" style="margin-top:6px">Ripristina da GitHub</button>`);
+  pwEl('pw-ssave').onclick = () => {
+    pwCfg.token = pwEl('pw-tok').value.trim();
+    pwPersistCfg();
+    closeSheet(); render();
+    toast('Impostazioni salvate');
+  };
+  pwEl('pw-rest').onclick = async () => {
+    pwCfg.token = pwEl('pw-tok').value.trim();
+    pwPersistCfg();
+    try {
+      if (!pwCfg.gist) {
+        const l = await (await pwGh('/gists?per_page=100')).json();
+        const g = l.find(x => x.files && x.files['pesate.json']);
+        if (!g) throw 0;
+        pwCfg.gist = g.id; pwPersistCfg();
+      }
+      const j = await (await pwGh('/gists/' + pwCfg.gist)).json();
+      pwData = { ...pwData, ...pwSanitize(JSON.parse(j.files['pesate.json'].content)) };
+      pwPersist();
+      pwTileDirty = false;
+      closeSheet(); render();
+      toast('Dati ripristinati');
+    } catch (_) { toast('Ripristino non riuscito'); }
+  };
+}
+
+/* ═══ ESPORTAZIONE EXCEL (SheetJS + JSZip, caricati solo quando servono) ═══ */
+function pwLoadLibs() {
+  if (window.XLSX && window.JSZip) return Promise.resolve();
+  if (pwLibsP) return pwLibsP;
+  const ld = (src) => new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.async = true; s.onload = res; s.onerror = () => rej(new Error('load ' + src));
+    document.head.appendChild(s);
+  });
+  pwLibsP = Promise.all([
+    window.XLSX ? 0 : ld('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'),
+    window.JSZip ? 0 : ld('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'),
+  ]).then(() => {}).catch((e) => { pwLibsP = null; throw e; });
+  return pwLibsP;
+}
+async function pwBuildXlsx(X, Z, data, weeksList) {
+  const ser = s => Math.round(Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / 864e5) + 25569, K = Object.keys(data).sort(), n = K.length + 1;
+  const A = [['Data', 'Peso (kg)'], ...K.map(d => [ser(d), data[d]])];
+  const ws = X.utils.aoa_to_sheet(A); ws['!cols'] = [{ wch: 12 }, { wch: 11 }];
+  K.forEach((d, i) => { ws['A' + (i + 2)].z = 'dd/mm/yyyy'; ws['B' + (i + 2)].z = '0.0'; });
+  const B = [['Settimana dal', 'Media (kg)', 'Pesate', 'Var. % vs sett. prec.'], ...weeksList.map(x => [ser(x.k), +x.a.toFixed(2), x.n, x.pct == null ? '' : +x.pct.toFixed(2)])];
+  const w2 = X.utils.aoa_to_sheet(B); w2['!cols'] = [{ wch: 14 }, { wch: 11 }, { wch: 8 }, { wch: 20 }];
+  weeksList.forEach((x, i) => { w2['A' + (i + 2)].z = 'dd/mm/yyyy'; });
+  const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, 'Pesate'); X.utils.book_append_sheet(wb, w2, 'Medie settimanali');
+  const z = await Z.loadAsync(X.write(wb, { type: 'array', bookType: 'xlsx' }));
+  const NS = 'xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  const H = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  z.file('xl/charts/chart1.xml', H + `<c:chartSpace ${NS}><c:roundedCorners val="0"/><c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:rPr lang="it-IT" sz="1400" b="0"/><a:t>Andamento del peso (kg)</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/><c:plotArea><c:layout/><c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/><c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:strRef><c:f>Pesate!$B$1</c:f></c:strRef></c:tx><c:spPr><a:ln w="28575" cap="rnd"><a:solidFill><a:srgbClr val="2F5BEA"/></a:solidFill><a:round/></a:ln></c:spPr><c:marker><c:symbol val="none"/></c:marker><c:cat><c:numRef><c:f>Pesate!$A$2:$A$${n}</c:f></c:numRef></c:cat><c:val><c:numRef><c:f>Pesate!$B$2:$B$${n}</c:f></c:numRef></c:val><c:smooth val="0"/></c:ser><c:marker val="1"/><c:axId val="111"/><c:axId val="222"/></c:lineChart><c:dateAx><c:axId val="111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:numFmt formatCode="dd/mm/yy" sourceLinked="0"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="222"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblOffset val="100"/><c:baseTimeUnit val="days"/></c:dateAx><c:valAx><c:axId val="222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="0.0" sourceLinked="0"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="111"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx></c:plotArea><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>`);
+  z.file('xl/drawings/drawing1.xml', H + `<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><xdr:twoCellAnchor><xdr:from><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>14</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>24</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="2" name="Grafico peso"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>`);
+  const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  z.file('xl/drawings/_rels/drawing1.xml.rels', H + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${R}/chart" Target="../charts/chart1.xml"/></Relationships>`);
+  z.file('xl/worksheets/_rels/sheet1.xml.rels', H + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${R}/drawing" Target="../drawings/drawing1.xml"/></Relationships>`);
+  let ct = await z.file('[Content_Types].xml').async('string');
+  ct = ct.replace('</Types>', '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/><Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/></Types>');
+  z.file('[Content_Types].xml', ct);
+  let s = await z.file('xl/worksheets/sheet1.xml').async('string');
+  if (!/xmlns:r=/.test(s)) s = s.replace('<worksheet ', '<worksheet xmlns:r="' + R + '" ');
+  s = s.replace('</worksheet>', '<drawing r:id="rId1"/></worksheet>');
+  z.file('xl/worksheets/sheet1.xml', s);
+  return z.generateAsync({ type: 'uint8array', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+async function pwExport() {
+  try { await pwLoadLibs(); } catch (_) { return toast('Librerie non caricate, riprova online'); }
+  try {
+    const u = await pwBuildXlsx(window.XLSX, window.JSZip, pwData, pwWeeks().reverse());
+    const nm = 'pesate-' + pwToday() + '.xlsx';
+    const f = new File([u], nm, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) {
+      await navigator.share({ files: [f] });
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(f); a.download = nm; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+    if (e && e.name === 'NotAllowedError') return toast('File pronto: tocca di nuovo l\u2019icona per condividerlo');
+    toast('Export non riuscito');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
    RENDER
    ═══════════════════════════════════════════════════════════ */
 function render() {
@@ -4297,23 +4985,23 @@ function render() {
   if (state.screen === 'register') { app.innerHTML = renderRegister(); bindAuth(); return; }
   // Salva lo scroll attuale nella mappa per-tab (per la tab che stiamo per lasciare)
   const prevScreen = document.getElementById('screen');
-  if (prevScreen && _lastRenderedTab) {
-    _tabScroll[_lastRenderedTab] = prevScreen.scrollTop;
+  if (prevScreen && _lastRenderedKey) {
+    _tabScroll[_lastRenderedKey] = prevScreen.scrollTop;
   }
   // Determina lo scroll target per la tab che stiamo per renderizzare:
   // 1) Se c'è uno scroll salvato prima di aprire un sheet ed è per la stessa tab, usalo
   // 2) Altrimenti usa lo scroll memorizzato per questa tab (visita precedente)
   // 3) Altrimenti 0
   let scrollTarget = 0;
-  if (_savedScrollBeforeSheet && _savedScrollBeforeSheet.tab === state.tab) {
+  if (_savedScrollBeforeSheet && _savedScrollBeforeSheet.tab === scrollKey()) {
     scrollTarget = _savedScrollBeforeSheet.scrollTop;
     _savedScrollBeforeSheet = null;
-  } else if (_tabScroll[state.tab] != null) {
-    scrollTarget = _tabScroll[state.tab];
+  } else if (_tabScroll[scrollKey()] != null) {
+    scrollTarget = _tabScroll[scrollKey()];
   }
   app.innerHTML = renderAppShell();
   bindApp();
-  _lastRenderedTab = state.tab;
+  _lastRenderedKey = scrollKey();
   if (scrollTarget > 0) {
     const newScreen = document.getElementById('screen');
     if (newScreen) {
@@ -4325,7 +5013,12 @@ function render() {
     }
   }
 }
-let _lastRenderedTab = null;
+let _lastRenderedKey = null;
+// Chiave per la memoria dello scroll: una per scheda; la sotto-sezione Peso (dentro Oggi)
+// ha una chiave propria per ciascuna voce, così il Diario ritrova la sua posizione.
+function scrollKey() {
+  return (state.tab === 'today' && state.pesoView) ? 'peso:' + state.pesoView : state.tab;
+}
 
 /* ─── AUTH SCREENS ──────────────────────────────────────── */
 function renderLogin() {
@@ -4516,7 +5209,10 @@ function renderAppShell() {
   let content = '';
   let header = '';
   let tabbar = renderTabbar();
-  if (state.tab === 'today')   { header = renderHeader('Diario', false, true); content = renderToday(); }
+  if (state.tab === 'today') {
+    if (state.pesoView) { header = pwRenderHeader(); content = pwRenderView(); }
+    else { header = renderHeader('Diario', false, true); content = renderToday(); }
+  }
   if (state.tab === 'search')  {
     const hasBack = !!state.searchOriginTab;
     header = renderHeader('Cerca alimenti', hasBack);
@@ -4573,7 +5269,7 @@ function renderTabbar() {
    ──────────────────────────────────────────────────────── */
 const DASH_CFG_KEY = 'nutrilog::dashboard-cfg';
 const DASH_DEFAULT = {
-  show: { kcal: true, macro: true, micro: false, week: false },
+  show: { kcal: true, peso: true, macro: true, micro: false, week: false },
   heights: {}, // es. { kcal: 320, macro: 180 } - opzionale, default = auto
   resizeLocked: true, // di default le maniglie sono BLOCCATE per evitare modifiche accidentali durante lo scroll
 };
@@ -4667,6 +5363,7 @@ function renderToday() {
       <button data-date="next" aria-label="Giorno successivo">${I.right}</button>
     </div>
 
+    ${(dCfg.show.kcal || dCfg.show.peso) ? `<div class="dash-duo${(dCfg.show.kcal && dCfg.show.peso) ? '' : ' solo'}">` : ''}
     ${dCfg.show.kcal ? `
       <div class="card card-resizable ${isOver ? 'kcal-over' : ''}" data-card-id="kcal" ${heightStyle('kcal')}>
         <div class="ring-wrap">
@@ -4686,7 +5383,7 @@ function renderToday() {
         </div>
         <div class="ring-sub">
           <div><div class="n">${round(t.kcal)}</div><div class="l">Assunte</div></div>
-          <div><div class="n">${round(g.calories)}</div><div class="l">Obiettivo</div></div>
+          <div><div class="n">${round(g.calories)}</div><div class="l">Obiett.</div></div>
           <div><div class="n ${isOver ? 'over' : ''}">${isOver ? '−' + overAmount : round(remaining)}</div><div class="l">${isOver ? 'Sforate' : 'Rimaste'}</div></div>
         </div>
         <div class="mini-week" id="mini-week-bars">
@@ -4695,6 +5392,8 @@ function renderToday() {
         ${resizeHandle('kcal')}
       </div>
     ` : ''}
+    ${dCfg.show.peso ? pwRenderTile() : ''}
+    ${(dCfg.show.kcal || dCfg.show.peso) ? '</div>' : ''}
 
     ${dCfg.show.macro ? `
       <h3 class="section-title">Macronutrienti</h3>
@@ -5324,7 +6023,7 @@ function openSheet(html) {
   // così possiamo ripristinarla dopo che lo sheet si chiude e render() si esegue
   const scr = document.getElementById('screen');
   if (scr && _savedScrollBeforeSheet === null) {
-    _savedScrollBeforeSheet = { tab: state.tab, scrollTop: scr.scrollTop };
+    _savedScrollBeforeSheet = { tab: scrollKey(), scrollTop: scr.scrollTop };
   }
   _sheetGen++;
   const portal = document.getElementById('portal');
@@ -7176,7 +7875,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.35.1';
+const APP_VERSION = '1.36.0';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
@@ -7745,6 +8444,7 @@ function openDashCfgSheet() {
   const meals = getMealsCfg();
   const cards = [
     { id: 'kcal', label: 'Anello calorie', desc: 'Anello principale con kcal e progresso', alwaysOn: false },
+    { id: 'peso', label: 'Peso', desc: "Riquadro accanto all'anello calorie" },
     { id: 'macro', label: 'Macronutrienti', desc: 'Proteine, Carboidrati, Grassi' },
     { id: 'micro', label: 'Micronutrienti', desc: 'Fibre, Zuccheri, Saturi' },
     { id: 'week', label: 'Riepilogo settimana esteso', desc: 'Card aggiuntiva con dettagli (le mini-barre sono già nella card kcal)' },
@@ -9162,6 +9862,11 @@ function bindApp() {
       // andavo in Cerca, torno → resto su "Cena").
       // Se l'utente tappa "Oggi" mentre è già sulla tab today ma su un giorno diverso,
       // riporta al giorno corrente (utility quando si è navigato avanti/indietro).
+      if (next === 'today' && state.tab === 'today' && state.pesoView) {
+        // Dentro la sotto-sezione Peso, "Oggi" riporta al Diario (come la freccia "Diario")
+        pwClose();
+        return;
+      }
       if (next === 'today' && state.tab === 'today' && state.date !== todayISO()) {
         state.date = todayISO();
         _tabScroll['today'] = 0; // qui sì azzeriamo, è un cambio di giorno
@@ -9366,6 +10071,11 @@ function bindApp() {
   // populate week summary on today tab
   if (state.tab === 'today') {
     populateWeekSummaryCard().catch(e => dlog('week summary FAIL: ' + e.message));
+  }
+
+  // ── PESO: riquadro nel Diario oppure sotto-sezione ──
+  if (state.tab === 'today') {
+    if (state.pesoView) pwBindView(); else pwBindTile();
   }
 
   // ── PIANO: handlers ──
