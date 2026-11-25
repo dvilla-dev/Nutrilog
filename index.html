@@ -1,4 +1,4 @@
-<!-- NUTRILOG_VERSION: 1.36.0 -->
+<!-- NUTRILOG_VERSION: 1.36.1 -->
 <!--
   NutriLog — Diario alimentare single-file
   ────────────────────────────────────────
@@ -4527,6 +4527,15 @@ function pwLast() { const k = pwDs(); return k.length ? pwData[k[k.length - 1]] 
 function pwPersist() { try { localStorage.setItem(PW_K, JSON.stringify(pwData)); } catch (e) { dlog('pw persist FAIL: ' + e.message); } }
 function pwPersistCfg() { try { localStorage.setItem(PW_C, JSON.stringify(pwCfg)); } catch (_) {} }
 const pwEl = id => document.getElementById(id);
+// Token del backup: quello di Peso se impostato, altrimenti lo stesso di NutriLog
+// (config "cloudBackup::config"). Il Gist resta comunque separato: id in "pesate-cfg".
+function pwNlToken() {
+  try {
+    const c = (typeof cloudBackup !== 'undefined' && cloudBackup.getConfig) ? cloudBackup.getConfig() : JSON.parse(localStorage.getItem('cloudBackup::config') || 'null');
+    return (c && c.token) || '';
+  } catch (_) { return ''; }
+}
+const pwToken = () => pwCfg.token || pwNlToken();
 
 /* ─── Stato del modulo ─── */
 let pwSel = pwToday();       // giorno selezionato in "Inserisci"
@@ -4865,9 +4874,9 @@ function pwBindView() {
 }
 
 /* ═══ BACKUP SU GIST SEGRETO ═══ */
-const pwGh = (p, o = {}) => fetch('https://api.github.com' + p, { ...o, headers: { Authorization: 'Bearer ' + pwCfg.token, Accept: 'application/vnd.github+json' } });
+const pwGh = (p, o = {}) => fetch('https://api.github.com' + p, { ...o, headers: { Authorization: 'Bearer ' + pwToken(), Accept: 'application/vnd.github+json' } });
 async function pwBackup() {
-  if (!pwCfg.token) return;
+  if (!pwToken()) return;
   try {
     const c = JSON.stringify(pwData, null, 1);
     const r = pwCfg.gist
@@ -4878,11 +4887,16 @@ async function pwBackup() {
   } catch (_) { toast('Backup non riuscito. Sei offline?'); }
 }
 function pwOpenSettings() {
+  const nl = pwNlToken(), own = !!pwCfg.token;
+  const info = nl && !own ? ['Sto usando il token di NutriLog: non serve fare altro.', 'var(--accent)']
+    : (nl ? ['Hai impostato un token diverso da quello di NutriLog.', 'var(--text-2)']
+      : ['Serve un token GitHub con il solo permesso "gist".', 'var(--text-2)']);
   openSheet(`
     <h2 class="sheet-title">Backup peso</h2>
-    <p class="sheet-sub">Le pesate vengono salvate in un Gist segreto su GitHub a ogni salvataggio. Serve un token con il solo permesso "gist".</p>
-    <div class="field"><label>Token GitHub (solo permesso gist)</label>
-      <input class="input" id="pw-tok" type="password" autocapitalize="off" autocomplete="off" style="font-size:16px" value="${esc(pwCfg.token || '')}"></div>
+    <p class="sheet-sub">Le pesate vengono salvate in un Gist segreto su GitHub a ogni salvataggio, separato da quello di NutriLog.</p>
+    <p style="font-size:13px;margin:0 0 14px;color:${info[1]}">${info[0]}</p>
+    <div class="field"><label>${nl ? 'Token diverso (facoltativo)' : 'Token GitHub (solo permesso gist)'}</label>
+      <input class="input" id="pw-tok" type="password" autocapitalize="off" autocomplete="off" style="font-size:16px" placeholder="${nl ? 'Vuoto = usa quello di NutriLog' : ''}" value="${esc(pwCfg.token || '')}"></div>
     <button class="btn btn-primary" id="pw-ssave" type="button">Salva impostazioni</button>
     <button class="btn btn-ghost" id="pw-rest" type="button" style="margin-top:6px">Ripristina da GitHub</button>`);
   pwEl('pw-ssave').onclick = () => {
@@ -7875,7 +7889,7 @@ function askGramsForTemplate(food) {
    ═══════════════════════════════════════════════════════════ */
 const APP_ID = 'nutrilog';   // ⚠ cambia per altre app (es. 'sleeplog')
 const APP_LABEL = 'NutriLog'; // etichetta user-facing
-const APP_VERSION = '1.36.0';
+const APP_VERSION = '1.36.1';
 
 const cloudBackup = {
   // --- Config storage (localStorage diretto, indipendente da sg/ss) ---
